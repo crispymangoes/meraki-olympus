@@ -30,7 +30,7 @@ contract Olympus is RewardDistributor, ERC721Holder{
 
     IERC721 private MerakiToken;
 
-    constructor(address _merakiToken, uint _founderTokenCap) RewardDistributor("Staked Meraki Token", "sMRKI"){
+    constructor(address _merakiToken, uint _founderTokenCap, ERC20 rewardToken) RewardDistributor("Staked Meraki Token", "sMRKI", rewardToken){
         MerakiToken = IERC721(_merakiToken);
         founderDepositCap = _founderTokenCap;
         totalDeposits = founderDepositCap;
@@ -101,10 +101,6 @@ contract Olympus is RewardDistributor, ERC721Holder{
     //needs to account for founder less voting power
     function DAOVotingPower(address _user) public view returns(uint){
         return balanceOf(_user) + (founderBalance[_user] * (MAX_SUPPLY - founderDepositCap) / founderDepositCap); //account for founders reduced voting power
-    }
-
-    function getRewardTokens() public view returns(address[] memory){
-        return rewardTokens;
     }
 
     function usersNFTs(address _user) public view returns(uint[] memory ids){

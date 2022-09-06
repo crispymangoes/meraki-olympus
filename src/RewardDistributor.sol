@@ -10,11 +10,6 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
-struct Airdrop{
-    address airdropToken;
-    uint amount;
-}
-
 struct RewardInfo{
     address token;
     uint amount;
@@ -31,9 +26,9 @@ struct RewardInfo{
  * @dev need to implement a withdraw function that calls _burn
  */
 abstract contract RewardDistributor is Ownable, ERC20{
+    using SafeERC20 for ERC20;
 
     //reward tracking
-    address[] public rewardTokens;//available tokens to use as rewards
     mapping(address => uint) public rewardCount;//tracks amount of times rewards are added
     mapping(address => mapping(uint => uint)) public cumulativeRewardShare;//store cumulative reward share as rewards are added
     mapping(address => bool) public isRewarder;
@@ -45,6 +40,8 @@ abstract contract RewardDistributor is Ownable, ERC20{
 
     bool public paused;
 
+    ERC20 private immutable rewardToken;
+
     modifier checkPause{
         require(!paused, "RewardDistributor: Contract is paused");
         _;
@@ -54,18 +51,11 @@ abstract contract RewardDistributor is Ownable, ERC20{
      * @param _name the name of the staked token users get for joining pool
      * @param _symbol the symbol of the staked token users get for joining the pool
      */
-    constructor(string memory _name, string memory _symbol) ERC20(_name, _symbol) Ownable(){}
-
-    /****************************external onlyOwner *************************************/
-    function addRewardToken(address _token) external onlyOwner{
-        (bool exists,) = inRewardTokens(_token);
-        require(!exists, "RewardDistributor: _token is already in rewardTokens");
-        cumulativeRewardShare[_token][rewardCount[_token]] = 0;
-        rewardCount[_token]+=1;
-
-        rewardTokens.push(_token);
+    constructor(string memory _name, string memory _symbol, ERC20 _rewardToken) ERC20(_name, _symbol) Ownable(){
+        rewardToken = _rewardToken;
     }
 
+    /****************************external onlyOwner *************************************/
     function adjustRewarder(address _rewarder, bool _state) external onlyOwner{
         isRewarder[_rewarder] = _state;
     }
@@ -84,15 +74,13 @@ abstract contract RewardDistributor is Ownable, ERC20{
         payoutTo[msg.sender] = _to;
     }
 
-    function depositReward(address _token, uint _amount) external checkPause{
+    function depositReward(uint _amount) external checkPause{
         require(isRewarder[msg.sender], "RewardDistributor: Caller is not a rewarder");
-        (bool exists,) = inRewardTokens(_token);
-        require(exists, "RewardDistributor: _token is not in rewardTokens");
-        SafeERC20.safeTransferFrom(IERC20(_token), msg.sender, address(this), _amount);
+        rewardToken.safeTransferFrom(msg.sender, address(this), _amount);
         
-        uint count = rewardCount[_token];
-        cumulativeRewardShare[_token][count] = cumulativeRewardShare[_token][count-1] + (_amount/totalAmountDeposited());
-        rewardCount[_token]+=1;
+        uint count = rewardCount[address(rewardToken)];
+        cumulativeRewardShare[address(rewardToken)][count] = cumulativeRewardShare[address(rewardToken)][count-1] + (_amount/totalAmountDeposited());
+        rewardCount[address(rewardToken)]+=1;
     }
 
     function claimRewards(address _user) external virtual checkPause{
@@ -100,15 +88,6 @@ abstract contract RewardDistributor is Ownable, ERC20{
     }
 
     /****************************public view *************************************/
-    ///@dev checks to see if _token is in rewardTokens
-    function inRewardTokens(address _token) public view returns(bool, uint){
-        for(uint i=0; i<rewardTokens.length; i++){
-            if(rewardTokens[i] == _token){
-                return (true, i);
-            }
-        }
-        return (false, 0);
-    }
 
     /**
      * @dev should return a users balance
@@ -124,40 +103,15 @@ abstract contract RewardDistributor is Ownable, ERC20{
         return totalSupply();
     }
 
-    function pendingRewards(address _user) public view returns(RewardInfo[] memory rewards){
-        rewards = new RewardInfo[](rewardTokens.length);
+    function pendingRewards(address _user) public view returns(uint256 reward){
         uint clc;//count last claim
         uint cc;//current count
-        for(uint i=0; i<rewardTokens.length; i++){
-            clc = rewardCountLastClaim[rewardTokens[i]][_user];
-            cc = rewardCount[rewardTokens[i]] - 1;
-            if(cc == clc){
-                continue; //user already claimed rewards for this token
-            }
-            rewards[i] = RewardInfo({
-                token: rewardTokens[i],
-                amount: rewardOwed[rewardTokens[i]][_user] + userBalance(_user) * (cumulativeRewardShare[rewardTokens[i]][cc] - cumulativeRewardShare[rewardTokens[i]][clc])
-            });
-            //rewards[i] = rewardOwed[rewardTokens[i]][_user] + userBalance(_user) * (cumulativeRewardShare[rewardTokens[i]][cc] - cumulativeRewardShare[rewardTokens[i]][clc]);
+        clc = rewardCountLastClaim[address(rewardToken)][_user];
+        cc = rewardCount[address(rewardToken)] - 1;
+        if(cc == clc){
+            return 0; //user already claimed rewards for this token
         }
-    }
-
-    //returns a sum of all reward tokens owed useful for updating UI state
-    function rewardStateUpdate(address _user) public view returns(uint totalRewardBalance){
-        uint clc;//count last claim
-        uint cc;//current count
-        for(uint i=0; i<rewardTokens.length; i++){
-            clc = rewardCountLastClaim[rewardTokens[i]][_user];
-            cc = rewardCount[rewardTokens[i]] - 1;
-            if(cc == clc){
-                continue; //user already claimed rewards for this token
-            }
-            totalRewardBalance += rewardOwed[rewardTokens[i]][_user] + userBalance(_user) * (cumulativeRewardShare[rewardTokens[i]][cc] - cumulativeRewardShare[rewardTokens[i]][clc]);
-        }
-    }
-
-    function rewardLength() public view returns(uint){
-        return rewardTokens.length;
+        reward = rewardOwed[address(rewardToken)][_user] + userBalance(_user) * (cumulativeRewardShare[address(rewardToken)][cc] - cumulativeRewardShare[address(rewardToken)][clc]); 
     }
 
     /****************************internal mutative *************************************/
@@ -167,15 +121,13 @@ abstract contract RewardDistributor is Ownable, ERC20{
     function _updateRewards(address _user) internal{
         uint clc;//count last claim
         uint cc;//current count
-        for(uint i=0; i<rewardTokens.length; i++){
-            clc = rewardCountLastClaim[rewardTokens[i]][_user];
-            cc = rewardCount[rewardTokens[i]] - 1;
-            if(cc == clc){
-                continue; //user already claimed rewards for this token
-            }
-            rewardOwed[rewardTokens[i]][_user] += userBalance(_user) * (cumulativeRewardShare[rewardTokens[i]][cc] - cumulativeRewardShare[rewardTokens[i]][clc]);
-            rewardCountLastClaim[rewardTokens[i]][_user] = cc;
+        clc = rewardCountLastClaim[address(rewardToken)][_user];
+        cc = rewardCount[address(rewardToken)] - 1;
+        if(cc == clc){
+            return; //user already claimed rewards for this token
         }
+        rewardOwed[address(rewardToken)][_user] += userBalance(_user) * (cumulativeRewardShare[address(rewardToken)][cc] - cumulativeRewardShare[address(rewardToken)][clc]);
+        rewardCountLastClaim[address(rewardToken)][_user] = cc;
     }
 
     //could allow a user to only claim on certain tokens?  If they pass in a token array
@@ -187,11 +139,9 @@ abstract contract RewardDistributor is Ownable, ERC20{
             to = payoutTo[_user];
         }
         uint owed;
-        for(uint i=0; i<rewardTokens.length; i++){
-            owed = rewardOwed[rewardTokens[i]][_user];
-            rewardOwed[rewardTokens[i]][_user] = 0;
-            SafeERC20.safeTransfer(IERC20(rewardTokens[i]), to, owed);
-        }
+        owed = rewardOwed[address(rewardToken)][_user];
+        rewardOwed[address(rewardToken)][_user] = 0;
+        rewardToken.safeTransfer(to, owed);
     }
 
     //Do not allow any token transfers
