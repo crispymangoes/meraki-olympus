@@ -1,0 +1,129 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
+import "./RewardDistributor.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+
+
+//TODO figure out how vote delegation works
+contract Olympus is RewardDistributor, ERC721Holder{
+    using EnumerableSet for EnumerableSet.UintSet;
+
+    uint constant BASE_DECIMALS = 10000;
+    uint constant MAX_SUPPLY = 100000;
+
+    //user variables
+    mapping(address => address) public delegateVoteTo;
+    mapping(address => EnumerableSet.UintSet) userNFTIds;
+
+    //founder variables
+    mapping(address => uint) public founderBalance;
+    uint public totalFounderDeposits;
+    address[] public founderList;
+    uint public founderDepositCap;
+
+    //reward tracking
+    uint public totalDeposits;//total amount of deposits in pool
+
+    IERC721 private MerakiToken;
+
+    constructor(address _merakiToken, uint _founderTokenCap) RewardDistributor("Staked Meraki Token", "sMRKI"){
+        MerakiToken = IERC721(_merakiToken);
+        founderDepositCap = _founderTokenCap;
+        totalDeposits = founderDepositCap;
+    }
+
+    /****************************external onlyOwner *************************************/
+
+    function adjustFounderInfo(address[] memory _founders, uint[] memory _balances, bool _lowerCap) external onlyOwner{
+        require(_founders.length == _balances.length, "Meraki: Inputs mismatched length");
+        //reset all founder balances
+        for(uint i=0; i<founderList.length; i++){
+            _updateRewards(founderList[i]);
+            founderBalance[founderList[i]] = 0;
+        }
+
+        founderList = _founders;
+        uint total;
+        for(uint i=0; i<founderList.length; i++){
+            require(founderList[i] != address(0), "Meraki: address(0) cannnot be a founder");
+            founderBalance[founderList[i]] = _balances[i];
+            total += _balances[i];
+        }
+        require(total <= founderDepositCap, "Meraki: _balances sum excedes founderDepositCap");
+
+        if(total < founderDepositCap){
+            require(_lowerCap, "Meraki: Sum of _balances is lower than existing founderDepositCap, so _lowerCap must be true");
+            totalDeposits = totalDeposits - founderDepositCap + total;
+            founderDepositCap =  total;
+        }
+    }
+
+    /****************************external mutative *************************************/
+    function stake(uint[] memory _ids) external checkPause{
+        require(_ids.length > 0, "Meraki: _ids is empty");
+        //update reward info
+        _updateRewards(msg.sender);
+        for(uint i=0; i<_ids.length; i++){
+            MerakiToken.safeTransferFrom(msg.sender, address(this), _ids[i], "");
+            userNFTIds[msg.sender].add(_ids[i]);
+            //userNFTIds[msg.sender].push(_ids[i]);
+        }
+        totalDeposits += _ids.length;
+        _mint(msg.sender,  _ids.length);
+    }
+
+    function unstake(uint _amount) external{
+        require(_amount > 0, "Meraki: _amount is zero");
+        //update reward info
+        _updateRewards(msg.sender);
+        uint initialBal = balanceOf(msg.sender);//was the Length of userNFTIds
+        totalDeposits -= _amount;
+        _burn(msg.sender, _amount);
+        //send user their NFTs
+        require(_amount <= initialBal, "_amount excedes balance");
+        uint idToTransfer;
+        for(uint i=1; i<=_amount; i++){
+            idToTransfer = userNFTIds[msg.sender].at(0);
+            MerakiToken.safeTransferFrom(address(this), msg.sender, idToTransfer);
+            userNFTIds[msg.sender].remove(idToTransfer);
+            //delete userNFTIds[msg.sender][initialBal - i];
+        }
+        //if(_amount ==  initialBal){//completely delete entry if user withdraw completely
+        //    delete userNFTIds[msg.sender];
+        //}
+    }
+
+    /****************************public view *************************************/
+    //needs to account for founder less voting power
+    function DAOVotingPower(address _user) public view returns(uint){
+        return balanceOf(_user) + (founderBalance[_user] * (MAX_SUPPLY - founderDepositCap) / founderDepositCap); //account for founders reduced voting power
+    }
+
+    function getRewardTokens() public view returns(address[] memory){
+        return rewardTokens;
+    }
+
+    function usersNFTs(address _user) public view returns(uint[] memory ids){
+        ids = new uint[](userNFTIds[_user].length());
+        for(uint i=0; i<userNFTIds[_user].length(); i++){
+            ids[i] = userNFTIds[_user].at(i);
+        }
+        return ids;
+    }
+
+    function userBalance(address _user) public view override returns(uint){
+        return balanceOf(_user) + founderBalance[_user];
+    }
+
+    function totalAmountDeposited() public view override returns(uint){
+        return totalDeposits;
+    }
+
+    function decimals() public pure override returns(uint8){
+        return 0;
+    }
+}
