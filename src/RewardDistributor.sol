@@ -3,13 +3,13 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
-import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
-import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
+import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
+import { Pausable } from "@openzeppelin/contracts/security/Pausable.sol";
 
 /**
  * @title Adds advanced reward distribution logic to a staking contract
@@ -33,7 +33,7 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable {
     mapping(address => uint256) public rewardOwed; //store reward owed to user
     mapping(address => address) public payoutTo;
 
-    ERC20 private immutable rewardToken;
+    ERC20 public immutable rewardToken;
 
     /**
      * @param _name the name of the staked token users get for joining pool
@@ -66,9 +66,7 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable {
         rewardToken.safeTransferFrom(msg.sender, address(this), _amount);
 
         uint256 count = rewardCount;
-        cumulativeRewardShare[count] =
-            cumulativeRewardShare[count - 1] +
-            (_amount / totalAmountDeposited());
+        cumulativeRewardShare[count] = cumulativeRewardShare[count - 1] + (_amount / totalAmountDeposited());
         rewardCount += 1;
     }
 
@@ -92,11 +90,7 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable {
         return totalSupply();
     }
 
-    function pendingRewards(address _user)
-        public
-        view
-        returns (uint256 reward)
-    {
+    function pendingRewards(address _user) public view returns (uint256 reward) {
         uint256 clc; //count last claim
         uint256 cc; //current count
         clc = rewardCountLastClaim[_user];
@@ -104,10 +98,7 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable {
         if (cc == clc) {
             return 0; //user already claimed rewards for this token
         }
-        reward =
-            rewardOwed[_user] +
-            userBalance(_user) *
-            (cumulativeRewardShare[cc] - cumulativeRewardShare[clc]);
+        reward = rewardOwed[_user] + userBalance(_user) * (cumulativeRewardShare[cc] - cumulativeRewardShare[clc]);
     }
 
     /****************************internal mutative *************************************/
@@ -122,9 +113,7 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable {
         if (cc == clc) {
             return; //user already claimed rewards for this token
         }
-        rewardOwed[_user] +=
-            userBalance(_user) *
-            (cumulativeRewardShare[cc] - cumulativeRewardShare[clc]);
+        rewardOwed[_user] += userBalance(_user) * (cumulativeRewardShare[cc] - cumulativeRewardShare[clc]);
         rewardCountLastClaim[_user] = cc;
     }
 
@@ -149,9 +138,6 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable {
         uint256 amount
     ) internal virtual override {
         super._beforeTokenTransfer(from, to, amount);
-        require(
-            from == address(0) || to == address(0),
-            "Reward Distributor: Token transfers are not allowed"
-        );
+        require(from == address(0) || to == address(0), "Reward Distributor: Token transfers are not allowed");
     }
 }
