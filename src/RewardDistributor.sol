@@ -10,6 +10,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
 import { Pausable } from "@openzeppelin/contracts/security/Pausable.sol";
+import { ReentrancyGuard } from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /**
  * @title Adds advanced reward distribution logic to a staking contract
@@ -21,11 +22,11 @@ import { Pausable } from "@openzeppelin/contracts/security/Pausable.sol";
  * @dev Need to implement a deposit function that calls _mint
  * @dev need to implement a withdraw function that calls _burn
  */
-abstract contract RewardDistributor is Ownable, ERC20, Pausable {
+abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard {
     using SafeERC20 for ERC20;
 
     //reward tracking
-    uint256 public rewardCount; //tracks amount of times rewards are added
+    uint256 public rewardCount = 1; //tracks amount of times rewards are added
     mapping(uint256 => uint256) public cumulativeRewardShare; //store cumulative reward share as rewards are added
 
     //user information
@@ -58,20 +59,21 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable {
 
     /****************************external mutative *************************************/
 
-    function setPayoutTo(address _to) external {
+    function setPayoutTo(address _to) external nonReentrant {
         payoutTo[msg.sender] = _to;
     }
 
-    function depositReward(uint256 _amount) external whenNotPaused {
+    function depositReward(uint256 _amount) external whenNotPaused nonReentrant {
         rewardToken.safeTransferFrom(msg.sender, address(this), _amount);
 
         uint256 count = rewardCount;
         cumulativeRewardShare[count] = cumulativeRewardShare[count - 1] + (_amount / totalAmountDeposited());
-        rewardCount += 1;
+
+        rewardCount++;
     }
 
-    function claimRewards(address _user) external virtual whenNotPaused {
-        _claimRewards(_user);
+    function claimRewards(address _user) external virtual whenNotPaused nonReentrant returns (uint256) {
+        return _claimRewards(_user);
     }
 
     /****************************public view *************************************/
@@ -95,10 +97,11 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable {
         uint256 cc; //current count
         clc = rewardCountLastClaim[_user];
         cc = rewardCount - 1;
-        if (cc == clc) {
-            return 0; //user already claimed rewards for this token
+
+        reward = rewardOwed[_user];
+        if (cc > clc) {
+            reward += (userBalance(_user) * (cumulativeRewardShare[cc] - cumulativeRewardShare[clc]));
         }
-        reward = rewardOwed[_user] + userBalance(_user) * (cumulativeRewardShare[cc] - cumulativeRewardShare[clc]);
     }
 
     /****************************internal mutative *************************************/
@@ -106,10 +109,9 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable {
      * @dev must be called before a users deposit changes, and before a user claims rewards
      */
     function _updateRewards(address _user) internal {
-        uint256 clc; //count last claim
-        uint256 cc; //current count
-        clc = rewardCountLastClaim[_user];
-        cc = rewardCount - 1;
+        if (rewardCount == 0) return; // nothing to do.
+        uint256 clc = rewardCountLastClaim[_user]; //count last claim
+        uint256 cc = rewardCount - 1; //current count
         if (cc == clc) {
             return; //user already claimed rewards for this token
         }
@@ -117,18 +119,22 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable {
         rewardCountLastClaim[_user] = cc;
     }
 
+    error RewardDistributor__NothingOwed();
+
     //could allow a user to only claim on certain tokens?  If they pass in a token array
-    function _claimRewards(address _user) internal {
+    function _claimRewards(address _user) internal returns (uint256) {
         require(_user != address(0), "RewardDistributor: Invalid Address");
         _updateRewards(_user);
-        address to = _user;
-        if (payoutTo[_user] != address(0)) {
-            to = payoutTo[_user];
+        address to = payoutTo[_user] != address(0) ? payoutTo[_user] : _user;
+
+        uint256 owed = rewardOwed[_user];
+        if (owed > 0) {
+            rewardOwed[_user] = 0;
+            rewardToken.safeTransfer(to, owed);
+            return owed;
+        } else {
+            revert RewardDistributor__NothingOwed();
         }
-        uint256 owed;
-        owed = rewardOwed[_user];
-        rewardOwed[_user] = 0;
-        rewardToken.safeTransfer(to, owed);
     }
 
     //Do not allow any token transfers
