@@ -154,14 +154,60 @@ contract OlympusTest is Test, ERC721Holder {
         assertEq(WETH.balanceOf(newPayout), reward, "Rewards should have been sent to new address.");
     }
 
-    function testDepositReward() external {}
+    function testDepositReward() external {
+        // Give this address some WETH to deposit as rewards.
+        uint256 rewardAmount = 1e18;
+        deal(address(WETH), address(this), 2 * rewardAmount);
+        olympus.depositReward(rewardAmount);
+        olympus.depositReward(rewardAmount);
 
-    function testPause() external {}
+        assertEq(olympus.rewardCount(), 3, "Reward count should have been incremented.");
 
-    function testAdjustingFoudnerCuts() external {}
+        assertEq(olympus.cumulativeRewardShare(0), 0, "First reward share should be zero.");
 
-    function testTransfers() external {
-        //should fail
+        uint256 expectedRewardShare = rewardAmount / olympus.totalAmountDeposited();
+        assertEq(olympus.cumulativeRewardShare(1), expectedRewardShare, "Second reward share should equal expected.");
+
+        expectedRewardShare += rewardAmount / olympus.totalAmountDeposited();
+        assertEq(olympus.cumulativeRewardShare(2), expectedRewardShare, "Third reward share should equal expected.");
+    }
+
+    function testPause() external {
+        // Pause the contract.
+        olympus.Pause();
+        assertTrue(olympus.paused(), "Contract should be paused.");
+
+        uint256[] memory ids;
+        vm.expectRevert(bytes("Pausable: paused"));
+        olympus.stake(ids);
+
+        vm.expectRevert(bytes("Pausable: paused"));
+        olympus.depositReward(0);
+
+        vm.expectRevert(bytes("Pausable: paused"));
+        olympus.claimRewards(address(0));
+
+        // Make sure we can unpause.
+        olympus.unPause();
+        assertTrue(!olympus.paused(), "Contract should not be paused.");
+    }
+
+    function testAdjustingFounderCuts() external {}
+
+    function testTransfers(uint8 amount) external {
+        amount = uint8(bound(amount, 1, 100));
+        uint256[] memory ids = new uint256[](amount);
+        for (uint256 i = 0; i < amount; i++) {
+            ids[i] = startIndex + i;
+        }
+        // Give this address some WETH to deposit as rewards.
+        uint256 rewardAmount = 1e18;
+        deal(address(WETH), address(this), 2 * rewardAmount);
+
+        olympus.stake(ids);
+
+        vm.expectRevert(bytes("Reward Distributor: Token transfers are not allowed"));
+        olympus.transfer(vm.addr(777), 1);
     }
 
     // Integration test
