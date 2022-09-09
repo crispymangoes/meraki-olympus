@@ -2,15 +2,16 @@
 
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
-import "./RewardDistributor.sol";
-import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import { ERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import { ERC721Holder } from "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
+import { RewardDistributor, ERC20 } from "./RewardDistributor.sol";
+import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+
+import { console } from "@forge-std/Test.sol";
 
 contract Olympus is RewardDistributor, ERC721Holder {
     using EnumerableSet for EnumerableSet.UintSet;
 
-    uint256 constant BASE_DECIMALS = 10000;
     uint256 constant MAX_SUPPLY = 100000;
 
     //user variables
@@ -20,7 +21,13 @@ contract Olympus is RewardDistributor, ERC721Holder {
     //founder variables
     mapping(address => uint256) public founderBalance;
     uint256 public totalFounderDeposits;
+
     address[] public founderList;
+
+    function getFounderList() public view returns (address[] memory) {
+        return founderList;
+    }
+
     uint256 public founderDepositCap;
 
     //reward tracking
@@ -36,7 +43,7 @@ contract Olympus is RewardDistributor, ERC721Holder {
     ) RewardDistributor("Staked Meraki Token", "sMRKI", rewardToken) {
         MerakiToken = _merakiToken;
 
-        require(_founders.length == _balances.length, "Mismatch founder and balance array length");
+        if (_founders.length != _balances.length) revert Olympus__MisMatchedLengths();
         uint256 _foundersCap = 0;
         founderList = _founders;
         for (uint256 i = 0; i < _founders.length; i++) {
@@ -49,40 +56,50 @@ contract Olympus is RewardDistributor, ERC721Holder {
 
     /****************************external onlyOwner *************************************/
 
+    error Olympus__WrongFounderBalanceTotal(uint256 actual, uint256 expected);
+
+    error Olympus__ZeroAddressFounder();
+
+    error Olympus__MisMatchedLengths();
+
     function adjustFounderInfo(
         address[] memory _founders,
         uint256[] memory _balances,
         bool _lowerCap
     ) external onlyOwner {
-        require(_founders.length == _balances.length, "Meraki: Inputs mismatched length");
-        //reset all founder balances
+        if (_founders.length != _balances.length) revert Olympus__MisMatchedLengths();
+
+        // Reset old founders balances to zero.
         for (uint256 i = 0; i < founderList.length; i++) {
             _updateRewards(founderList[i]);
             founderBalance[founderList[i]] = 0;
         }
 
-        founderList = _founders;
         uint256 total;
-        for (uint256 i = 0; i < founderList.length; i++) {
-            require(founderList[i] != address(0), "Meraki: address(0) cannnot be a founder");
-            founderBalance[founderList[i]] = _balances[i];
+        for (uint256 i = 0; i < _founders.length; i++) {
+            if (_founders[i] == address(0)) revert Olympus__ZeroAddressFounder();
+            founderBalance[_founders[i]] = _balances[i];
             total += _balances[i];
         }
-        require(total <= founderDepositCap, "Meraki: _balances sum excedes founderDepositCap");
+
+        if (total > founderDepositCap) revert Olympus__WrongFounderBalanceTotal(total, founderDepositCap);
 
         if (total < founderDepositCap) {
-            require(
-                _lowerCap,
-                "Meraki: Sum of _balances is lower than existing founderDepositCap, so _lowerCap must be true"
-            );
+            if (!_lowerCap) revert Olympus__WrongFounderBalanceTotal(total, founderDepositCap);
             totalDeposits = totalDeposits - founderDepositCap + total;
             founderDepositCap = total;
         }
+
+        // If all above checks pass, then update founderList.
+        founderList = _founders;
     }
 
     /****************************external mutative *************************************/
+
+    error Olympus__ZeroInput();
+
     function stake(uint256[] memory _ids) external whenNotPaused nonReentrant {
-        require(_ids.length > 0, "Meraki: _ids is empty");
+        if (_ids.length == 0) revert Olympus__ZeroInput();
         //update reward info
         _updateRewards(msg.sender);
         for (uint256 i = 0; i < _ids.length; i++) {
@@ -95,19 +112,19 @@ contract Olympus is RewardDistributor, ERC721Holder {
     }
 
     function unstake(uint256 _amount) external nonReentrant {
-        require(_amount > 0, "Meraki: _amount is zero");
+        if (_amount == 0) revert Olympus__ZeroInput();
         //update reward info
         _updateRewards(msg.sender);
-        uint256 initialBal = balanceOf(msg.sender); //was the Length of userNFTIds
+
         totalDeposits -= _amount;
         _burn(msg.sender, _amount);
+
         //send user their NFTs
-        require(_amount <= initialBal, "_amount excedes balance");
         uint256 idToTransfer;
         for (uint256 i = 1; i <= _amount; i++) {
             idToTransfer = userNFTIds[msg.sender].at(0);
-            MerakiToken.safeTransferFrom(address(this), msg.sender, idToTransfer);
             userNFTIds[msg.sender].remove(idToTransfer);
+            MerakiToken.safeTransferFrom(address(this), msg.sender, idToTransfer);
         }
     }
 

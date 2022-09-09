@@ -2,13 +2,10 @@
 
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
-import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
+import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { Pausable } from "@openzeppelin/contracts/security/Pausable.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
@@ -17,13 +14,13 @@ import { ReentrancyGuard } from "@openzeppelin/contracts/security/ReentrancyGuar
  * @author crispymangoes
  * @notice on every reward deposit the summation of rewardDeposit/totalBalance is saved and used to calculate
  * a users reward share
- * @notice Airdrops are handled using an ERC20 snapshot
  * @dev _updateReward must be called before a users userBalance changes, and  before _claimRewards is called
  * @dev Need to implement a deposit function that calls _mint
  * @dev need to implement a withdraw function that calls _burn
  */
 abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard {
     using SafeERC20 for ERC20;
+    using Math for uint256;
 
     //reward tracking
     uint256 public rewardCount = 1; //tracks amount of times rewards are added
@@ -67,7 +64,7 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
         rewardToken.safeTransferFrom(msg.sender, address(this), _amount);
 
         uint256 count = rewardCount;
-        cumulativeRewardShare[count] = cumulativeRewardShare[count - 1] + (_amount / totalAmountDeposited());
+        cumulativeRewardShare[count] = cumulativeRewardShare[count - 1] + _amount.mulDiv(1e18, totalAmountDeposited());
 
         rewardCount++;
     }
@@ -93,14 +90,12 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
     }
 
     function pendingRewards(address _user) public view returns (uint256 reward) {
-        uint256 clc; //count last claim
-        uint256 cc; //current count
-        clc = rewardCountLastClaim[_user];
-        cc = rewardCount - 1;
+        uint256 clc = rewardCountLastClaim[_user]; //count last claim
+        uint256 cc = rewardCount - 1; //current count
 
         reward = rewardOwed[_user];
         if (cc > clc) {
-            reward += (userBalance(_user) * (cumulativeRewardShare[cc] - cumulativeRewardShare[clc]));
+            reward += userBalance(_user).mulDiv((cumulativeRewardShare[cc] - cumulativeRewardShare[clc]), 1e18);
         }
     }
 
@@ -115,15 +110,16 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
         if (cc == clc) {
             return; //user already claimed rewards for this token
         }
-        rewardOwed[_user] += userBalance(_user) * (cumulativeRewardShare[cc] - cumulativeRewardShare[clc]);
+        rewardOwed[_user] += userBalance(_user).mulDiv((cumulativeRewardShare[cc] - cumulativeRewardShare[clc]), 1e18);
         rewardCountLastClaim[_user] = cc;
     }
 
     error RewardDistributor__NothingOwed();
 
-    //could allow a user to only claim on certain tokens?  If they pass in a token array
+    error RewardDistributor__ZeroAddress();
+
     function _claimRewards(address _user) internal returns (uint256) {
-        require(_user != address(0), "RewardDistributor: Invalid Address");
+        if (_user == address(0)) revert RewardDistributor__ZeroAddress();
         _updateRewards(_user);
         address to = payoutTo[_user] != address(0) ? payoutTo[_user] : _user;
 
@@ -137,6 +133,8 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
         }
     }
 
+    error RewardDistributor__TransfersNotAllowed();
+
     //Do not allow any token transfers
     function _beforeTokenTransfer(
         address from,
@@ -144,6 +142,6 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
         uint256 amount
     ) internal virtual override {
         super._beforeTokenTransfer(from, to, amount);
-        require(from == address(0) || to == address(0), "Reward Distributor: Token transfers are not allowed");
+        if (from != address(0) && to != address(0)) revert RewardDistributor__TransfersNotAllowed();
     }
 }

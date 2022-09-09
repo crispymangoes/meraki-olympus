@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import { Olympus } from "src/Olympus.sol";
+import { Olympus, RewardDistributor } from "src/Olympus.sol";
 import { MerakiToken } from "src/MerakiToken.sol";
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
@@ -33,7 +33,7 @@ contract OlympusTest is Test, ERC721Holder {
 
         // Set up balances array.
         founderBalances[0] = 15_000;
-        founderBalances[1] = 25_000;
+        founderBalances[1] = 15_000;
         founderBalances[2] = 25_000;
         founderBalances[3] = 25_000;
         founderBalances[4] = 10_000;
@@ -83,16 +83,24 @@ contract OlympusTest is Test, ERC721Holder {
             0,
             "Last claim should be zero since nothing was deposited."
         );
+
+        uint256[] memory emptyIds;
+
+        vm.expectRevert(abi.encodeWithSelector(Olympus.Olympus__ZeroInput.selector));
+        olympus.stake(emptyIds);
+
+        vm.expectRevert(abi.encodeWithSelector(Olympus.Olympus__ZeroInput.selector));
+        olympus.unstake(0);
     }
 
-    function testClaimingRewards(uint8 amount) external {
+    function testClaimingRewards(uint8 amount, uint256 rewardAmount) external {
         amount = uint8(bound(amount, 1, 100));
         uint256[] memory ids = new uint256[](amount);
         for (uint256 i = 0; i < amount; i++) {
             ids[i] = startIndex + i;
         }
         // Give this address some WETH to deposit as rewards.
-        uint256 rewardAmount = 1e18;
+        rewardAmount = bound(rewardAmount, 1e6, type(uint112).max);
         deal(address(WETH), address(this), 3 * rewardAmount);
         olympus.depositReward(rewardAmount);
 
@@ -108,11 +116,10 @@ contract OlympusTest is Test, ERC721Holder {
         olympus.unstake(amount);
 
         uint256 expectedReward = (rewardAmount * amount) / totalDeposited;
-        assertApproxEqRel(
+        assertEq(
             olympus.pendingRewards(address(this)),
             expectedReward,
-            1e12,
-            "Pending rewards should be approximately equal to expected reward."
+            "Pending rewards should be equal to expected reward."
         );
         uint256 reward = olympus.pendingRewards(address(this));
         assertEq(reward, olympus.claimRewards(address(this)), "Pending rewards should equal claimed rewards.");
@@ -130,6 +137,15 @@ contract OlympusTest is Test, ERC721Holder {
         assertEq(olympus.pendingRewards(address(this)), 0, "Pending rewards should be zero.");
 
         assertEq(WETH.balanceOf(address(this)), reward, "Rewards should have been sent to user.");
+
+        // User should not be able to unstake anymore tokens.
+        vm.expectRevert(bytes("ERC20: burn amount exceeds balance"));
+        olympus.unstake(1);
+
+        // Check to see what happens even if a user somehow gets an extra Olympus token.
+        deal(address(olympus), address(this), 1);
+        vm.expectRevert(stdError.indexOOBError);
+        olympus.unstake(1);
     }
 
     function testSetPayoutAddress(uint8 amount) external {
@@ -154,9 +170,9 @@ contract OlympusTest is Test, ERC721Holder {
         assertEq(WETH.balanceOf(newPayout), reward, "Rewards should have been sent to new address.");
     }
 
-    function testDepositReward() external {
+    function testDepositReward(uint256 rewardAmount) external {
         // Give this address some WETH to deposit as rewards.
-        uint256 rewardAmount = 1e18;
+        rewardAmount = bound(rewardAmount, 1e6, type(uint112).max);
         deal(address(WETH), address(this), 2 * rewardAmount);
         olympus.depositReward(rewardAmount);
         olympus.depositReward(rewardAmount);
@@ -165,10 +181,10 @@ contract OlympusTest is Test, ERC721Holder {
 
         assertEq(olympus.cumulativeRewardShare(0), 0, "First reward share should be zero.");
 
-        uint256 expectedRewardShare = rewardAmount / olympus.totalAmountDeposited();
+        uint256 expectedRewardShare = (1e18 * rewardAmount) / olympus.totalAmountDeposited();
         assertEq(olympus.cumulativeRewardShare(1), expectedRewardShare, "Second reward share should equal expected.");
 
-        expectedRewardShare += rewardAmount / olympus.totalAmountDeposited();
+        expectedRewardShare += (1e18 * rewardAmount) / olympus.totalAmountDeposited();
         assertEq(olympus.cumulativeRewardShare(2), expectedRewardShare, "Third reward share should equal expected.");
     }
 
@@ -192,9 +208,96 @@ contract OlympusTest is Test, ERC721Holder {
         assertTrue(!olympus.paused(), "Contract should not be paused.");
     }
 
-    function testAdjustingFounderCuts() external {}
+    function testAdjustingFounderCuts() external {
+        address[] memory newFounders = new address[](2);
+        uint256[] memory newBalances = new uint256[](2);
+        newFounders[0] = vm.addr(1234);
+        newFounders[1] = vm.addr(12345);
+        newBalances[0] = 45_000;
+        newBalances[1] = 45_000;
 
-    function testTransfers(uint8 amount) external {
+        uint256 oldCap = olympus.founderDepositCap();
+
+        // Add some rewards so that old founders have rewards to claim.
+        uint256 rewardAmount = 10e18;
+        deal(address(WETH), address(this), rewardAmount);
+        olympus.depositReward(rewardAmount);
+
+        address[] memory oldFounderList = olympus.getFounderList();
+        olympus.adjustFounderInfo(newFounders, newBalances, false);
+
+        assertEq(olympus.founderDepositCap(), oldCap, "Founder deposit cap should no have changed.");
+
+        address[] memory founderList = olympus.getFounderList();
+        for (uint256 i = 0; i < founderList.length; i++) {
+            assertEq(founderList[i], newFounders[i], "Olympus founderList should  have been updated to new list.");
+            assertEq(
+                olympus.founderBalance(founderList[i]),
+                newBalances[i],
+                "New Founder balances should have been set to newBalances."
+            );
+        }
+
+        for (uint256 i = 0; i < oldFounderList.length; i++) {
+            assertEq(
+                olympus.founderBalance(oldFounderList[i]),
+                0,
+                "Old Founder balances should have been  set to zero."
+            );
+            uint256 expectedPending = (rewardAmount * founderBalances[i]) / olympus.totalAmountDeposited();
+            assertEq(
+                olympus.pendingRewards(founders[i]),
+                expectedPending,
+                "Old founders should still have pending rewards to claim."
+            );
+        }
+
+        // Add one of the original founders  back in, and reduce founder deposit cap.
+        newFounders = new address[](3);
+        newBalances = new uint256[](3);
+        newFounders[0] = vm.addr(1234);
+        newFounders[1] = vm.addr(12345);
+        newFounders[2] = founders[0];
+        newBalances[0] = 25_000;
+        newBalances[1] = 25_000;
+        newBalances[2] = 25_000;
+
+        vm.expectRevert(abi.encodeWithSelector(Olympus.Olympus__WrongFounderBalanceTotal.selector, 75_000, oldCap));
+        olympus.adjustFounderInfo(newFounders, newBalances, false);
+
+        oldFounderList = olympus.getFounderList();
+        olympus.adjustFounderInfo(newFounders, newBalances, true);
+
+        founderList = olympus.getFounderList();
+        for (uint256 i = 0; i < founderList.length; i++) {
+            assertEq(founderList[i], newFounders[i], "Olympus founderList should  have been updated to new list.");
+            assertEq(
+                olympus.founderBalance(founderList[i]),
+                newBalances[i],
+                "New Founder balances should have been set to newBalances."
+            );
+        }
+
+        // Check remaining revert messages.
+        newFounders = new address[](3);
+        newBalances = new uint256[](2);
+        vm.expectRevert(abi.encodeWithSelector(Olympus.Olympus__MisMatchedLengths.selector));
+        olympus.adjustFounderInfo(newFounders, newBalances, false);
+
+        newFounders = new address[](2);
+        newBalances = new uint256[](2);
+        vm.expectRevert(abi.encodeWithSelector(Olympus.Olympus__ZeroAddressFounder.selector));
+        olympus.adjustFounderInfo(newFounders, newBalances, false);
+
+        newFounders = new address[](1);
+        newBalances = new uint256[](1);
+        newFounders[0] = vm.addr(7777);
+        newBalances[0] = 100_000;
+        vm.expectRevert(abi.encodeWithSelector(Olympus.Olympus__WrongFounderBalanceTotal.selector, 100_000, 75_000));
+        olympus.adjustFounderInfo(newFounders, newBalances, false);
+    }
+
+    function testTransfersRevert(uint8 amount) external {
         amount = uint8(bound(amount, 1, 100));
         uint256[] memory ids = new uint256[](amount);
         for (uint256 i = 0; i < amount; i++) {
@@ -206,10 +309,205 @@ contract OlympusTest is Test, ERC721Holder {
 
         olympus.stake(ids);
 
-        vm.expectRevert(bytes("Reward Distributor: Token transfers are not allowed"));
+        vm.expectRevert(abi.encodeWithSelector(RewardDistributor.RewardDistributor__TransfersNotAllowed.selector));
         olympus.transfer(vm.addr(777), 1);
     }
 
+    function _checkFounderRewards(Olympus o, uint256 rewardsSinceLastClaim) internal {
+        address[] memory f = o.getFounderList();
+        for (uint256 i = 0; i < f.length; i++) {
+            address founder = f[i];
+            uint256 rewardBalanceBeforeClaim = o.rewardToken().balanceOf(founder);
+            uint256 expectedReward = (rewardsSinceLastClaim * o.userBalance(founder)) / o.totalAmountDeposited();
+            assertApproxEqAbs(
+                o.pendingRewards(founder),
+                expectedReward,
+                1,
+                "Founder pending reward should equal expected."
+            );
+            assertApproxEqAbs(
+                o.pendingRewards(founder),
+                o.claimRewards(founder),
+                1,
+                "Pending rewards should equal claimed rewards."
+            );
+            uint256 rewardBalanceAfterClaim = o.rewardToken().balanceOf(founder);
+            assertApproxEqAbs(
+                rewardBalanceAfterClaim - rewardBalanceBeforeClaim,
+                expectedReward,
+                1,
+                "Founder should have been sent the expected reward."
+            );
+        }
+    }
+
+    function testFoundersClaimingRewards() external {
+        uint256 rewardAmount = 1e18;
+        deal(address(WETH), address(this), type(uint256).max);
+        olympus.depositReward(rewardAmount);
+        _checkFounderRewards(olympus, rewardAmount);
+
+        // Founder 0 stakes their own Meraki Tokens.
+        //amount = uint8(bound(amount, 1, 100));
+        uint8 amount = 10;
+        uint256[] memory ids = new uint256[](amount);
+        for (uint256 i = 0; i < amount; i++) {
+            ids[i] = startIndex + i;
+            meraki.transferFrom(address(this), founders[0], ids[i]);
+        }
+        vm.startPrank(founders[0]);
+        meraki.setApprovalForAll(address(olympus), true);
+        olympus.stake(ids);
+        uint256 expectedFounderBalance = founderBalances[0] + amount;
+        assertEq(
+            olympus.userBalance(founders[0]),
+            expectedFounderBalance,
+            "0th founder balance should equal expected."
+        );
+        vm.stopPrank();
+
+        // Deposit some more rewards.
+        uint8 iterations = 10;
+        while (iterations > 0) {
+            for (uint8 i = 0; i < iterations; i++) olympus.depositReward(rewardAmount);
+
+            _checkFounderRewards(olympus, iterations * rewardAmount);
+
+            iterations--;
+        }
+    }
+
+    function _claim(address claimer) internal returns (uint256 claimed) {
+        uint256 pending = olympus.pendingRewards(claimer);
+        vm.prank(claimer);
+        assertApproxEqAbs(pending, claimed = olympus.claimRewards(claimer), 1, "Pending should equal claimed.");
+    }
+
+    //TODO maybe a founder should get in on the fun too?
+    //
     // Integration test
-    function testMultipleUsers() external {}
+    function testMultipleUsers(
+        uint8 amountA,
+        uint8 amountB,
+        uint8 amountC
+    ) external {
+        // Setup Meraki Balances.
+        address alice = vm.addr(7777);
+        address bob = vm.addr(77777);
+        address bobAlt = vm.addr(111111);
+        address sally = vm.addr(777777);
+
+        // Values to store total amount claimed per user.
+        uint256[] memory userClaims = new uint256[](3);
+
+        amountA = uint8(bound(amountA, 10, type(uint8).max));
+        uint256[] memory idsAlice = new uint256[](amountA);
+        uint256 aliceStart = 3_000;
+        for (uint256 i = 0; i < amountA; i++) {
+            idsAlice[i] = aliceStart + i;
+            vm.prank(merakiTokenWhale);
+            meraki.transferFrom(merakiTokenWhale, alice, idsAlice[i]);
+        }
+
+        amountB = uint8(bound(amountB, 10, type(uint8).max));
+        uint256[] memory idsBob = new uint256[](amountB);
+        uint256 bobStart = 4_000;
+        for (uint256 i = 0; i < amountB; i++) {
+            idsBob[i] = bobStart + i;
+            vm.prank(merakiTokenWhale);
+            meraki.transferFrom(merakiTokenWhale, bob, idsBob[i]);
+        }
+
+        amountC = uint8(bound(amountC, 10, type(uint8).max));
+        uint256[] memory idsSally = new uint256[](amountC);
+        uint256 sallyStart = 5_000;
+        for (uint256 i = 0; i < amountC; i++) {
+            idsSally[i] = sallyStart + i;
+            vm.prank(merakiTokenWhale);
+            meraki.transferFrom(merakiTokenWhale, sally, idsSally[i]);
+        }
+
+        // Alice, Bob, and Sally deposit between 1 -> 255 Meraki tokens.
+        vm.startPrank(alice);
+        meraki.setApprovalForAll(address(olympus), true);
+        olympus.stake(idsAlice);
+        vm.stopPrank();
+
+        vm.startPrank(bob);
+        meraki.setApprovalForAll(address(olympus), true);
+        olympus.stake(idsBob);
+        olympus.setPayoutTo(bobAlt);
+        vm.stopPrank();
+
+        vm.startPrank(sally);
+        meraki.setApprovalForAll(address(olympus), true);
+        olympus.stake(idsSally);
+        vm.stopPrank();
+
+        deal(address(WETH), address(this), type(uint256).max);
+        uint256 rewardAmount = 1e18;
+
+        uint8 iterations = 10;
+        while (iterations > 0) {
+            for (uint8 i = 0; i < iterations; i++) {
+                // Deposit some more rewards.
+                olympus.depositReward(rewardAmount);
+
+                // Alice claims rewards after every deposit.
+                userClaims[0] += _claim(alice);
+
+                // Bob claims occassionally.
+                if (i % 3 == 0) {
+                    userClaims[1] += _claim(bob);
+                }
+
+                // Sally does not claim rewards until the end.
+            }
+
+            _checkFounderRewards(olympus, iterations * rewardAmount);
+
+            iterations--;
+        }
+
+        // Midway founders are updated to lower founder deposit cap.
+        founderBalances[0] = 12_500;
+        founderBalances[1] = 15_000;
+        founderBalances[2] = 10_000;
+        founderBalances[3] = 15_000;
+        founderBalances[4] = 17_000;
+
+        olympus.adjustFounderInfo(founders, founderBalances, true);
+
+        //  More rewards are added and claimed.
+        iterations = 10;
+        while (iterations > 0) {
+            for (uint8 i = 0; i < iterations; i++) {
+                // Deposit some more rewards.
+                olympus.depositReward(rewardAmount);
+
+                // Alice claims rewards after every deposit.
+                userClaims[0] += _claim(alice);
+
+                // Bob claims occassionally.
+                if (i % 3 == 0) {
+                    userClaims[1] += _claim(bob);
+                }
+
+                // Sally does not claim rewards until the end.
+            }
+
+            _checkFounderRewards(olympus, iterations * rewardAmount);
+
+            iterations--;
+        }
+
+        // Make sure Sally has claimed all rewards.
+        userClaims[2] += olympus.claimRewards(sally);
+
+        assertEq(WETH.balanceOf(alice), userClaims[0], "Alice WETH balance should equal total claimed.");
+        assertEq(WETH.balanceOf(bob), 0, "Bob WETH balance should be zero.");
+        assertEq(WETH.balanceOf(bobAlt), userClaims[1], "BobAlt WETH balance should equal total claimed.");
+        assertEq(WETH.balanceOf(sally), userClaims[2], "Sally WETH balance should equal total claimed.");
+        assertTrue(WETH.balanceOf(address(olympus)) < 1e6, "Olympus should have only have dust WETH left.");
+    }
 }
