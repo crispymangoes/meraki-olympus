@@ -60,6 +60,8 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
         payoutTo[msg.sender] = _to;
     }
 
+    event RewardsAdded(uint256 amount, uint256 timestamp);
+
     function depositReward(uint256 _amount) external whenNotPaused nonReentrant {
         rewardToken.safeTransferFrom(msg.sender, address(this), _amount);
 
@@ -67,6 +69,7 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
         cumulativeRewardShare[count] = cumulativeRewardShare[count - 1] + _amount.mulDiv(1e18, totalAmountDeposited());
 
         rewardCount++;
+        emit RewardsAdded(_amount, block.timestamp);
     }
 
     function claimRewards(address _user) external virtual whenNotPaused nonReentrant returns (uint256) {

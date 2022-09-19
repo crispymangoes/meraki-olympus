@@ -383,8 +383,6 @@ contract OlympusTest is Test, ERC721Holder {
         assertApproxEqAbs(pending, claimed = olympus.claimRewards(claimer), 1, "Pending should equal claimed.");
     }
 
-    //TODO maybe a founder should get in on the fun too?
-    //
     // Integration test
     function testMultipleUsers(
         uint8 amountA,
@@ -443,6 +441,20 @@ contract OlympusTest is Test, ERC721Holder {
         meraki.setApprovalForAll(address(olympus), true);
         olympus.stake(idsSally);
         vm.stopPrank();
+
+        {
+            // Founder  0 stakes some meraki tokens.
+            uint8 amount = 33;
+            uint256[] memory ids = new uint256[](amount);
+            for (uint256 i = 0; i < amount; i++) {
+                ids[i] = startIndex + i;
+                meraki.transferFrom(address(this), founders[0], ids[i]);
+            }
+            vm.startPrank(founders[0]);
+            meraki.setApprovalForAll(address(olympus), true);
+            olympus.stake(ids);
+            vm.stopPrank();
+        }
 
         deal(address(WETH), address(this), type(uint256).max);
         uint256 rewardAmount = 1e18;
