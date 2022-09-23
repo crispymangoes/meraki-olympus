@@ -3,8 +3,10 @@ pragma solidity ^0.8.13;
 
 import { Olympus, RewardDistributor } from "src/Olympus.sol";
 import { MerakiToken } from "src/MerakiToken.sol";
+import { ERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
+import { ReentrancyAttacker } from "src/mocks/ReentrancyAttacker.sol";
 
 import { Test, stdStorage, console, StdStorage, stdError } from "@forge-std/Test.sol";
 
@@ -69,6 +71,7 @@ contract OlympusTest is Test, ERC721Holder {
             totalDepositBefore + amount,
             "Total deposit should equal prior amount + users deposit."
         );
+        assertEq(olympus.usersNFTs(address(this)).length, amount, "User NFT array should have amount length.");
 
         // Unstake the full amount of NFTs.
         olympus.unstake(amount);
@@ -521,5 +524,27 @@ contract OlympusTest is Test, ERC721Holder {
         assertEq(WETH.balanceOf(bobAlt), userClaims[1], "BobAlt WETH balance should equal total claimed.");
         assertEq(WETH.balanceOf(sally), userClaims[2], "Sally WETH balance should equal total claimed.");
         assertTrue(WETH.balanceOf(address(olympus)) < 1e6, "Olympus should have only have dust WETH left.");
+    }
+
+    function testDecimals() external {
+        assertEq(olympus.decimals(), 0, "Olympus should report zero decimals.");
+    }
+
+    function testReentrancyAttack() external {
+        ReentrancyAttacker attacker = new ReentrancyAttacker(ERC721(address(meraki)), olympus);
+
+        uint8 amount = 10;
+        uint256[] memory ids = new uint256[](amount);
+        uint256 start = 3_000;
+        for (uint256 i = 0; i < amount; i++) {
+            ids[i] = start + i;
+            vm.prank(merakiTokenWhale);
+            meraki.transferFrom(merakiTokenWhale, address(attacker), ids[i]);
+        }
+
+        attacker.stake(ids);
+
+        vm.expectRevert(bytes("ReentrancyGuard: reentrant call"));
+        attacker.unstake(amount);
     }
 }

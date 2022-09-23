@@ -12,15 +12,13 @@ import { console } from "@forge-std/Test.sol";
 contract Olympus is RewardDistributor, ERC721Holder {
     using EnumerableSet for EnumerableSet.UintSet;
 
-    uint256 constant MAX_SUPPLY = 100000;
+    uint256 constant MAX_SUPPLY = 100_000;
 
     //user variables
-    mapping(address => address) public delegateVoteTo;
     mapping(address => EnumerableSet.UintSet) userNFTIds;
 
     //founder variables
     mapping(address => uint256) public founderBalance;
-    uint256 public totalFounderDeposits;
 
     address[] public founderList;
 
