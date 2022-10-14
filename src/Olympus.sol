@@ -60,6 +60,15 @@ contract Olympus is RewardDistributor, ERC721Holder {
 
     error Olympus__MisMatchedLengths();
 
+    /**
+     * @notice Allows owner to adjust founder reward distribution.
+     *         This only affects reward distributions and does not affect token distribution.
+     * @notice total balance can NOT increase compared to previous.
+     * @param _founders array of founder addresses
+     * @param _balances array of balances corresponding to each founders reward share.
+     * @param _lowerCap if true, then total balance can be lower than previous
+     *                  else then total balance can NOT be lower than previous
+     */
     function adjustFounderInfo(
         address[] memory _founders,
         uint256[] memory _balances,
@@ -96,6 +105,10 @@ contract Olympus is RewardDistributor, ERC721Holder {
 
     error Olympus__ZeroInput();
 
+    /**
+     * @notice allows users to stake Meraki tokens into olympus
+     * @param _ids array of Meraki token Ids to stake
+     */
     function stake(uint256[] memory _ids) external whenNotPaused nonReentrant {
         if (_ids.length == 0) revert Olympus__ZeroInput();
         //update reward info
@@ -109,6 +122,10 @@ contract Olympus is RewardDistributor, ERC721Holder {
         _mint(msg.sender, _ids.length);
     }
 
+    /**
+     * @notice allows users to unstake tokens from Olympus
+     * @param _amount the amount of tokens to unstake
+     */
     function unstake(uint256 _amount) external nonReentrant {
         if (_amount == 0) revert Olympus__ZeroInput();
         //update reward info
@@ -127,11 +144,17 @@ contract Olympus is RewardDistributor, ERC721Holder {
     }
 
     /****************************public view *************************************/
-    //needs to account for founder less voting power
+    /**
+     * @notice Get a users voting power
+     * @notice founders have reduced voting power
+     */
     function DAOVotingPower(address _user) public view returns (uint256) {
         return balanceOf(_user) + ((founderBalance[_user] * (MAX_SUPPLY - founderDepositCap)) / founderDepositCap); //account for founders reduced voting power
     }
 
+    /**
+     * @notice get an array of token ids a user has in Olympus
+     */
     function usersNFTs(address _user) public view returns (uint256[] memory ids) {
         ids = new uint256[](userNFTIds[_user].length());
         for (uint256 i = 0; i < userNFTIds[_user].length(); i++) {
@@ -140,14 +163,23 @@ contract Olympus is RewardDistributor, ERC721Holder {
         return ids;
     }
 
+    /**
+     * @notice get user balance in Olympus
+     */
     function userBalance(address _user) public view override returns (uint256) {
         return balanceOf(_user) + founderBalance[_user];
     }
 
+    /**
+     * @notice get the total amount of Meraki staked in Olympus.
+     */
     function totalAmountDeposited() public view override returns (uint256) {
         return totalDeposits;
     }
 
+    /**
+     * @notice Meraki Tokens are non-fungible so the sMRKI representing them have 0 decimals
+     */
     function decimals() public pure override returns (uint8) {
         return 0;
     }

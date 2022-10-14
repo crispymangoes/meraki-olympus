@@ -56,12 +56,19 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
 
     /****************************external mutative *************************************/
 
+    /**
+     * @notice allows a user to specifiy a custom payout address for Meraki Earnings
+     */
     function setPayoutTo(address _to) external nonReentrant {
         payoutTo[msg.sender] = _to;
     }
 
     event RewardsAdded(uint256 amount, uint256 timestamp);
 
+    /**
+     * @notice how rewards are added to this contract
+     * @param _amount the amount of `rewardToken` to add
+     */
     function depositReward(uint256 _amount) external whenNotPaused nonReentrant {
         rewardToken.safeTransferFrom(msg.sender, address(this), _amount);
 
@@ -72,6 +79,9 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
         emit RewardsAdded(_amount, block.timestamp);
     }
 
+    /**
+     * @notice allows users to claim pending `rewardToken`
+     */
     function claimRewards(address _user) external virtual whenNotPaused nonReentrant returns (uint256) {
         return _claimRewards(_user);
     }
@@ -92,6 +102,9 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
         return totalSupply();
     }
 
+    /**
+     * @notice get the pendign rewards for a user
+     */
     function pendingRewards(address _user) public view returns (uint256 reward) {
         uint256 clc = rewardCountLastClaim[_user]; //count last claim
         uint256 cc = rewardCount - 1; //current count
@@ -121,6 +134,9 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
 
     error RewardDistributor__ZeroAddress();
 
+    /**
+     * @notice helper function to send users rewards to proper payout address
+     */
     function _claimRewards(address _user) internal returns (uint256) {
         if (_user == address(0)) revert RewardDistributor__ZeroAddress();
         _updateRewards(_user);
@@ -138,7 +154,9 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
 
     error RewardDistributor__TransfersNotAllowed();
 
-    //Do not allow any token transfers
+    /**
+     * @dev token transfers are not allowed because reward logic does NOT account for transfers
+     */
     function _beforeTokenTransfer(
         address from,
         address to,

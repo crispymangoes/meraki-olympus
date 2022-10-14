@@ -94,6 +94,9 @@ contract OlympusTest is Test, ERC721Holder {
 
         vm.expectRevert(abi.encodeWithSelector(Olympus.Olympus__ZeroInput.selector));
         olympus.unstake(0);
+
+        vm.expectRevert(bytes("ERC20: burn amount exceeds balance"));
+        olympus.unstake(1);
     }
 
     function testClaimingRewards(uint8 amount, uint256 rewardAmount) external {
@@ -226,6 +229,8 @@ contract OlympusTest is Test, ERC721Holder {
         deal(address(WETH), address(this), rewardAmount);
         olympus.depositReward(rewardAmount);
 
+        uint256 totalDeposit = olympus.totalAmountDeposited();
+
         address[] memory oldFounderList = olympus.getFounderList();
         olympus.adjustFounderInfo(newFounders, newBalances, false);
 
@@ -255,7 +260,9 @@ contract OlympusTest is Test, ERC721Holder {
             );
         }
 
-        // Add one of the original founders  back in, and reduce founder deposit cap.
+        assertEq(olympus.totalAmountDeposited(), totalDeposit, "Total deposit should remain constant.");
+
+        // Add one of the original founders back in, and reduce founder deposit cap.
         newFounders = new address[](3);
         newBalances = new uint256[](3);
         newFounders[0] = vm.addr(1234);
@@ -280,6 +287,8 @@ contract OlympusTest is Test, ERC721Holder {
                 "New Founder balances should have been set to newBalances."
             );
         }
+        uint256 expectedTotalDeposit = newBalances[0] + newBalances[1] + newBalances[2];
+        assertEq(olympus.totalAmountDeposited(), expectedTotalDeposit, "Total deposit should decrease.");
 
         // Check remaining revert messages.
         newFounders = new address[](3);

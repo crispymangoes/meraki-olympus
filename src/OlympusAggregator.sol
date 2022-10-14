@@ -25,6 +25,10 @@ contract OlympusAggregator is Ownable, KeeperCompatibleInterface {
         token.safeTransfer(owner(), amount);
     }
 
+    function updateUpkeepMinimum(uint256 newMinimum) external onlyOwner {
+        upkeepMinimum = newMinimum;
+    }
+
     function sendRewardToOlympus() external {
         uint256 amount = olympus.rewardToken().balanceOf(address(this));
         _sendRewardToOlympus(amount);
