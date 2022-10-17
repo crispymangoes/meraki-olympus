@@ -29,15 +29,16 @@ contract OlympusScript is Script, Chainlist {
             balances = new uint256[](1);
             balances[0] = 90_000;
         } else if (chainId == MUMBAI) {
-            WETH = new MintableERC20();
-            merakiToken = new MintableERC721();
-            founders = new address[](1);
-            founders[0] = 0xa5E5860B34ac0C55884F2D0E9576d545e1c7Dfd4;
-            balances = new uint256[](1);
-            balances[0] = 90_000;
+            // WETH = new MintableERC20();
+            // merakiToken = new MintableERC721();
+            // founders = new address[](1);
+            // founders[0] = 0xa5E5860B34ac0C55884F2D0E9576d545e1c7Dfd4;
+            // balances = new uint256[](1);
+            // balances[0] = 90_000;
         }
 
-        Olympus olympus = new Olympus(merakiToken, WETH, founders, balances);
+        // Olympus olympus = new Olympus(merakiToken, WETH, founders, balances, 0.01e18);
+        Olympus olympus = Olympus(0x80247ed56D7De4487feb40d7814566774C713792);
 
         uint256 minimumForUpkeep = 1e18;
         OlympusAggregator aggregator = new OlympusAggregator(olympus, minimumForUpkeep);

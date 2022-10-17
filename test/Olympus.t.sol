@@ -40,7 +40,7 @@ contract OlympusTest is Test, ERC721Holder {
         founderBalances[3] = 25_000;
         founderBalances[4] = 10_000;
 
-        olympus = new Olympus(meraki, WETH, founders, founderBalances);
+        olympus = new Olympus(meraki, WETH, founders, founderBalances, 1);
 
         // Give this address some Meraki tokens to work with.
         vm.startPrank(merakiTokenWhale);
@@ -387,6 +387,43 @@ contract OlympusTest is Test, ERC721Holder {
 
             iterations--;
         }
+    }
+
+    /**
+     * @notice test DNOS where attacker spams Olympus with minimum reward deposit to prevent rewards being claimed by raising gas usage.
+     */
+    function testMaliciousRewardDeposit(uint256 amount) external {
+        amount = uint8(bound(amount, 1, 100));
+        uint256[] memory ids = new uint256[](amount);
+        for (uint256 i = 0; i < amount; i++) {
+            ids[i] = startIndex + i;
+        }
+        // Give this address some WETH to deposit as rewards.
+        deal(address(WETH), address(this), type(uint256).max);
+
+        // User joins.
+        olympus.stake(ids);
+
+        olympus.setMinimumRewardDeposit(0.01e18);
+
+        // Minimum reward amount is currently 0.01 Reward Token.
+        uint256 rewardAmount = 0.01e18;
+
+        // Attacker first tries to attack depositing 0 wei rewards.
+        vm.expectRevert(
+            abi.encodeWithSelector(RewardDistributor.RewardDistributor__MinimumRewardDepositNotMet.selector)
+        );
+        olympus.depositReward(0);
+
+        // Attacker spams Olympus with minimum reward deposits to try and stop users from claiming rewards.
+        for (uint256 i = 0; i < 1_000; i++) {
+            olympus.depositReward(rewardAmount);
+        }
+        uint256 startingGas = gasleft();
+        olympus.claimRewards(address(this));
+        uint256 gasUsed = startingGas - gasleft();
+
+        assertEq(gasUsed, 58_086, "Gas used should be an O(1) operation and use constant gas.");
     }
 
     function _claim(address claimer) internal returns (uint256 claimed) {

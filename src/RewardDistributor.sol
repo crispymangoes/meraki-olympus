@@ -17,6 +17,10 @@ import { ReentrancyGuard } from "@openzeppelin/contracts/security/ReentrancyGuar
  * @dev _updateReward must be called before a users userBalance changes, and  before _claimRewards is called
  * @dev Need to implement a deposit function that calls _mint
  * @dev need to implement a withdraw function that calls _burn
+ * @dev This contract is susceptible to sandwich attacks, where bots front run reward deposit TXs and join
+ * right before reward deposits, then leave immediately after. For Olympus integration this attack vector
+ * is mitigated because attackers need to purchase/sell illiquid NFTs to join/exit, and the NFTs have a sale royalty.
+ * Making it very difficult and expensive to profit off this attack vector.
  */
 abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard {
     using SafeERC20 for ERC20;
@@ -24,6 +28,7 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
 
     //reward tracking
     uint256 public rewardCount = 1; //tracks amount of times rewards are added
+    uint256 public minRewardDeposit;
     mapping(uint256 => uint256) public cumulativeRewardShare; //store cumulative reward share as rewards are added
 
     //user information
@@ -40,9 +45,11 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
     constructor(
         string memory _name,
         string memory _symbol,
-        ERC20 _rewardToken
+        ERC20 _rewardToken,
+        uint256 _minRewardDeposit
     ) ERC20(_name, _symbol) Ownable() {
         rewardToken = _rewardToken;
+        minRewardDeposit = _minRewardDeposit;
     }
 
     /****************************external onlyOwner *************************************/
@@ -52,6 +59,10 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
 
     function unPause() external onlyOwner {
         _unpause();
+    }
+
+    function setMinimumRewardDeposit(uint256 _min) external onlyOwner {
+        minRewardDeposit = _min;
     }
 
     /****************************external mutative *************************************/
@@ -65,11 +76,14 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
 
     event RewardsAdded(uint256 amount, uint256 timestamp);
 
+    error RewardDistributor__MinimumRewardDepositNotMet();
+
     /**
      * @notice how rewards are added to this contract
      * @param _amount the amount of `rewardToken` to add
      */
     function depositReward(uint256 _amount) external whenNotPaused nonReentrant {
+        if (_amount < minRewardDeposit) revert RewardDistributor__MinimumRewardDepositNotMet();
         rewardToken.safeTransferFrom(msg.sender, address(this), _amount);
 
         uint256 count = rewardCount;

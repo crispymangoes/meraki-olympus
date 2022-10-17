@@ -19,13 +19,7 @@ contract Olympus is RewardDistributor, ERC721Holder {
 
     //founder variables
     mapping(address => uint256) public founderBalance;
-
     address[] public founderList;
-
-    function getFounderList() public view returns (address[] memory) {
-        return founderList;
-    }
-
     uint256 public founderDepositCap;
 
     //reward tracking
@@ -35,10 +29,11 @@ contract Olympus is RewardDistributor, ERC721Holder {
 
     constructor(
         ERC721 _merakiToken,
-        ERC20 rewardToken,
+        ERC20 _rewardToken,
         address[] memory _founders,
-        uint256[] memory _balances
-    ) RewardDistributor("Staked Meraki Token", "sMRKI", rewardToken) {
+        uint256[] memory _balances,
+        uint256 _minRewardDeposit
+    ) RewardDistributor("Staked Meraki Token", "sMRKI", _rewardToken, _minRewardDeposit) {
         MerakiToken = _merakiToken;
 
         if (_founders.length != _balances.length) revert Olympus__MisMatchedLengths();
@@ -116,7 +111,6 @@ contract Olympus is RewardDistributor, ERC721Holder {
         for (uint256 i = 0; i < _ids.length; i++) {
             MerakiToken.safeTransferFrom(msg.sender, address(this), _ids[i], "");
             userNFTIds[msg.sender].add(_ids[i]);
-            //userNFTIds[msg.sender].push(_ids[i]);
         }
         totalDeposits += _ids.length;
         _mint(msg.sender, _ids.length);
@@ -175,6 +169,10 @@ contract Olympus is RewardDistributor, ERC721Holder {
      */
     function totalAmountDeposited() public view override returns (uint256) {
         return totalDeposits;
+    }
+
+    function getFounderList() public view returns (address[] memory) {
+        return founderList;
     }
 
     /**
