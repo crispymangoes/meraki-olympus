@@ -68,7 +68,7 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
     /****************************external mutative *************************************/
 
     /**
-     * @notice allows a user to specifiy a custom payout address for Meraki Earnings
+     * @notice allows a user to specify a custom payout address for Meraki Earnings
      */
     function setPayoutTo(address _to) external nonReentrant {
         payoutTo[msg.sender] = _to;
