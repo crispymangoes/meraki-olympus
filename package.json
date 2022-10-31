@@ -10,6 +10,7 @@
   "scripts": {
     "test": "source .env && forge test -vv --fork-url $MATIC_RPC_URL --fork-block-number $BLOCK_NUMBER",
     "deployMumbai": "source .env && forge script script/Olympus.s.sol:OlympusScript --rpc-url $MUMBAI_RPC_URL  --private-key $PRIVATE_KEY --broadcast —optimize —optimizer-runs 200 --verify --etherscan-api-key $POLYGONSCAN_KEY -vvvv",
+    "deployMatic": "source .env && forge script script/Olympus.s.sol:OlympusScript --rpc-url $MATIC_RPC_URL  --private-key $PRIVATE_KEY --with-gas-price 100000000000 --broadcast —optimize —optimizer-runs 200 --verify --etherscan-api-key $POLYGONSCAN_KEY -vvvv",
     "coverage": "source .env && forge coverage -vvvv --fork-url $MATIC_RPC_URL --fork-block-number $BLOCK_NUMBER --report lcov"
   },
   "repository": {
