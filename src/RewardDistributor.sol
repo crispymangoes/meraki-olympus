@@ -27,12 +27,13 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
     using Math for uint256;
 
     //reward tracking
-    uint256 public rewardCount = 1; //tracks amount of times rewards are added
+    uint256 public totalDeposits; //total amount of deposits in pool
+    uint256 public totalRewards; //total amount of rewards in pool
     uint256 public minRewardDeposit;
-    mapping(uint256 => uint256) public cumulativeRewardShare; //store cumulative reward share as rewards are added
+    uint256 public cumulativeRewardShare; //store cumulative reward share as rewards are added
 
     //user information
-    mapping(address => uint256) public rewardCountLastClaim; //store users last claimed reward
+    mapping(address => uint256) public lastCumulativeRewardShare; //store users last cumulativeRewardShare
     mapping(address => uint256) public rewardOwed; //store reward owed to user
     mapping(address => address) public payoutTo;
 
@@ -82,15 +83,11 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
      * @notice how rewards are added to this contract
      * @param _amount the amount of `rewardToken` to add
      */
-    function depositReward(uint256 _amount) external whenNotPaused nonReentrant {
+    function depositReward(uint256 _amount) public whenNotPaused nonReentrant {
         if (_amount < minRewardDeposit) revert RewardDistributor__MinimumRewardDepositNotMet();
         rewardToken.safeTransferFrom(msg.sender, address(this), _amount);
 
-        uint256 count = rewardCount;
-        cumulativeRewardShare[count] = cumulativeRewardShare[count - 1] + _amount.mulDiv(1e18, totalAmountDeposited());
-
-        rewardCount++;
-        emit RewardsAdded(_amount, block.timestamp);
+        _depositReward(_amount);
     }
 
     /**
@@ -110,23 +107,11 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
     }
 
     /**
-     * @dev should return the total amount of deposit in the contract
-     */
-    function totalAmountDeposited() public view virtual returns (uint256) {
-        return totalSupply();
-    }
-
-    /**
      * @notice get the pendign rewards for a user
      */
     function pendingRewards(address _user) public view returns (uint256 reward) {
-        uint256 clc = rewardCountLastClaim[_user]; //count last claim
-        uint256 cc = rewardCount - 1; //current count
-
         reward = rewardOwed[_user];
-        if (cc > clc) {
-            reward += userBalance(_user).mulDiv((cumulativeRewardShare[cc] - cumulativeRewardShare[clc]), 1e18);
-        }
+        reward += userBalance(_user).mulDiv((cumulativeRewardShare - lastCumulativeRewardShare[_user]), 1e18);
     }
 
     /****************************internal mutative *************************************/
@@ -134,19 +119,25 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
      * @dev must be called before a users deposit changes, and before a user claims rewards
      */
     function _updateRewards(address _user) internal {
-        if (rewardCount == 0) return; // nothing to do.
-        uint256 clc = rewardCountLastClaim[_user]; //count last claim
-        uint256 cc = rewardCount - 1; //current count
-        if (cc == clc) {
-            return; //user already claimed rewards for this token
-        }
-        rewardOwed[_user] += userBalance(_user).mulDiv((cumulativeRewardShare[cc] - cumulativeRewardShare[clc]), 1e18);
-        rewardCountLastClaim[_user] = cc;
+        // deposit any rewards transferred to this contract that were not added
+        // via depositReward (eg. sale fees, airdrops, stray transfers, etc)
+        uint256 undepositedRewards = rewardToken.balanceOf(address(this)) - totalRewards;
+        if (undepositedRewards > 0) _depositReward(undepositedRewards);
+
+        rewardOwed[_user] = pendingRewards(_user);
+        lastCumulativeRewardShare[_user] = cumulativeRewardShare;
     }
 
     error RewardDistributor__NothingOwed();
 
     error RewardDistributor__ZeroAddress();
+
+    function _depositReward(uint256 _amount) internal {
+        totalRewards += _amount;
+        cumulativeRewardShare += _amount.mulDiv(1e18, totalDeposits);
+
+        emit RewardsAdded(_amount, block.timestamp);
+    }
 
     /**
      * @notice helper function to send users rewards to proper payout address
@@ -158,6 +149,7 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
 
         uint256 owed = rewardOwed[_user];
         if (owed > 0) {
+            totalRewards -= owed;
             rewardOwed[_user] = 0;
             rewardToken.safeTransfer(to, owed);
             return owed;
