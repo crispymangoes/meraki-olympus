@@ -60,14 +60,14 @@ contract OlympusTest is Test, ERC721Holder {
             ids[i] = startIndex + i;
         }
 
-        uint256 totalDepositBefore = olympus.totalAmountDeposited();
+        uint256 totalDepositBefore = olympus.totalDeposits();
 
         // Stake full amount of NFTs.
         olympus.stake(ids);
         assertEq(olympus.balanceOf(address(this)), amount, "Olympus balance should equal amount.");
         assertEq(olympus.DAOVotingPower(address(this)), amount, "DAO Voting power should equal amount.");
         assertEq(
-            olympus.totalAmountDeposited(),
+            olympus.totalDeposits(),
             totalDepositBefore + amount,
             "Total deposit should equal prior amount + users deposit."
         );
@@ -77,14 +77,14 @@ contract OlympusTest is Test, ERC721Holder {
         olympus.unstake(amount);
         assertEq(olympus.balanceOf(address(this)), 0, "Olympus balance should be zero.");
         assertEq(olympus.DAOVotingPower(address(this)), 0, "DAO Voting power should be zero.");
-        assertEq(olympus.totalAmountDeposited(), totalDepositBefore, "Total deposit should equal prior amount.");
+        assertEq(olympus.totalDeposits(), totalDepositBefore, "Total deposit should equal prior amount.");
 
         // Check reward logic makes sense.
         assertEq(olympus.rewardOwed(address(this)), 0, "Reward owed should be zero since nothing was deposited.");
         assertEq(
-            olympus.rewardCountLastClaim(address(this)),
+            olympus.lastCumulativeRewardShare(address(this)),
             0,
-            "Last claim should be zero since nothing was deposited."
+            "Last cumulative reward share should be zero since nothing was deposited."
         );
 
         uint256[] memory emptyIds;
@@ -116,7 +116,7 @@ contract OlympusTest is Test, ERC721Holder {
 
         olympus.depositReward(rewardAmount);
 
-        uint256 totalDeposited = olympus.totalAmountDeposited();
+        uint256 totalDeposited = olympus.totalDeposits();
 
         // Even though user left they can still claim rewards.
         olympus.unstake(amount);
@@ -128,14 +128,15 @@ contract OlympusTest is Test, ERC721Holder {
             "Pending rewards should be equal to expected reward."
         );
         uint256 reward = olympus.pendingRewards(address(this));
+        uint256 cumulativeRewardShare = olympus.cumulativeRewardShare();
         assertEq(reward, olympus.claimRewards(address(this)), "Pending rewards should equal claimed rewards.");
 
         assertEq(olympus.pendingRewards(address(this)), 0, "Pending rewards should be zero.");
         assertEq(olympus.rewardOwed(address(this)), 0, "`rewardOwed` should be zero.");
         assertEq(
-            olympus.rewardCountLastClaim(address(this)),
-            olympus.rewardCount() - 1,
-            "Should have upadted last claim to current."
+            olympus.lastCumulativeRewardShare(address(this)),
+            cumulativeRewardShare,
+            "Should have updated last cumulative reward share."
         );
 
         // Since user left future rewards should not accrue for them.
@@ -180,18 +181,18 @@ contract OlympusTest is Test, ERC721Holder {
         // Give this address some WETH to deposit as rewards.
         rewardAmount = bound(rewardAmount, 1e6, type(uint112).max);
         deal(address(WETH), address(this), 2 * rewardAmount);
+
         olympus.depositReward(rewardAmount);
+
+        uint256 expectedRewardShare = (1e18 * rewardAmount) / olympus.totalDeposits();
+        assertEq(olympus.cumulativeRewardShare(), expectedRewardShare, "Cumulative reward share should update.");
+        assertEq(olympus.totalRewards(), rewardAmount, "Reward amount should have increased.");
+
         olympus.depositReward(rewardAmount);
 
-        assertEq(olympus.rewardCount(), 3, "Reward count should have been incremented.");
-
-        assertEq(olympus.cumulativeRewardShare(0), 0, "First reward share should be zero.");
-
-        uint256 expectedRewardShare = (1e18 * rewardAmount) / olympus.totalAmountDeposited();
-        assertEq(olympus.cumulativeRewardShare(1), expectedRewardShare, "Second reward share should equal expected.");
-
-        expectedRewardShare += (1e18 * rewardAmount) / olympus.totalAmountDeposited();
-        assertEq(olympus.cumulativeRewardShare(2), expectedRewardShare, "Third reward share should equal expected.");
+        expectedRewardShare += (1e18 * rewardAmount) / olympus.totalDeposits();
+        assertEq(olympus.cumulativeRewardShare(), expectedRewardShare, "Cumulative reward share should update again.");
+        assertEq(olympus.totalRewards(), rewardAmount * 2, "Reward amount should have increased again.");
     }
 
     function testPause() external {
@@ -229,7 +230,7 @@ contract OlympusTest is Test, ERC721Holder {
         deal(address(WETH), address(this), rewardAmount);
         olympus.depositReward(rewardAmount);
 
-        uint256 totalDeposit = olympus.totalAmountDeposited();
+        uint256 totalDeposit = olympus.totalDeposits();
 
         address[] memory oldFounderList = olympus.getFounderList();
         olympus.adjustFounderInfo(newFounders, newBalances, false);
@@ -252,7 +253,7 @@ contract OlympusTest is Test, ERC721Holder {
                 0,
                 "Old Founder balances should have been  set to zero."
             );
-            uint256 expectedPending = (rewardAmount * founderBalances[i]) / olympus.totalAmountDeposited();
+            uint256 expectedPending = (rewardAmount * founderBalances[i]) / olympus.totalDeposits();
             assertEq(
                 olympus.pendingRewards(founders[i]),
                 expectedPending,
@@ -260,7 +261,7 @@ contract OlympusTest is Test, ERC721Holder {
             );
         }
 
-        assertEq(olympus.totalAmountDeposited(), totalDeposit, "Total deposit should remain constant.");
+        assertEq(olympus.totalDeposits(), totalDeposit, "Total deposit should remain constant.");
 
         // Add one of the original founders back in, and reduce founder deposit cap.
         newFounders = new address[](3);
@@ -288,7 +289,7 @@ contract OlympusTest is Test, ERC721Holder {
             );
         }
         uint256 expectedTotalDeposit = newBalances[0] + newBalances[1] + newBalances[2];
-        assertEq(olympus.totalAmountDeposited(), expectedTotalDeposit, "Total deposit should decrease.");
+        assertEq(olympus.totalDeposits(), expectedTotalDeposit, "Total deposit should decrease.");
 
         // Check remaining revert messages.
         newFounders = new address[](3);
@@ -330,7 +331,7 @@ contract OlympusTest is Test, ERC721Holder {
         for (uint256 i = 0; i < f.length; i++) {
             address founder = f[i];
             uint256 rewardBalanceBeforeClaim = o.rewardToken().balanceOf(founder);
-            uint256 expectedReward = (rewardsSinceLastClaim * o.userBalance(founder)) / o.totalAmountDeposited();
+            uint256 expectedReward = (rewardsSinceLastClaim * o.userBalance(founder)) / o.totalDeposits();
             assertApproxEqAbs(
                 o.pendingRewards(founder),
                 expectedReward,
@@ -423,7 +424,7 @@ contract OlympusTest is Test, ERC721Holder {
         olympus.claimRewards(address(this));
         uint256 gasUsed = startingGas - gasleft();
 
-        assertEq(gasUsed, 58_086, "Gas used should be an O(1) operation and use constant gas.");
+        assertEq(gasUsed, 55_175, "Gas used should be an O(1) operation and use constant gas.");
     }
 
     function _claim(address claimer) internal returns (uint256 claimed) {

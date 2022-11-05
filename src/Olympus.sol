@@ -22,9 +22,6 @@ contract Olympus is RewardDistributor, ERC721Holder {
     address[] public founderList;
     uint256 public founderDepositCap;
 
-    //reward tracking
-    uint256 public totalDeposits; //total amount of deposits in pool
-
     ERC721 private immutable MerakiToken;
 
     constructor(
@@ -162,13 +159,6 @@ contract Olympus is RewardDistributor, ERC721Holder {
      */
     function userBalance(address _user) public view override returns (uint256) {
         return balanceOf(_user) + founderBalance[_user];
-    }
-
-    /**
-     * @notice get the total amount of Meraki staked in Olympus.
-     */
-    function totalAmountDeposited() public view override returns (uint256) {
-        return totalDeposits;
     }
 
     function getFounderList() public view returns (address[] memory) {
