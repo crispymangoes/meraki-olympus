@@ -34,7 +34,6 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
     //user information
     mapping(address => uint256) public rewardCountLastClaim; //store users last claimed reward
     mapping(address => uint256) public rewardOwed; //store reward owed to user
-    mapping(address => address) public payoutTo;
 
     ERC20 public immutable rewardToken;
 
@@ -53,7 +52,7 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
     }
 
     /****************************external onlyOwner *************************************/
-    function Pause() external onlyOwner {
+    function pause() external onlyOwner {
         _pause();
     }
 
@@ -66,13 +65,6 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
     }
 
     /****************************external mutative *************************************/
-
-    /**
-     * @notice allows a user to specify a custom payout address for Meraki Earnings
-     */
-    function setPayoutTo(address _to) external nonReentrant {
-        payoutTo[msg.sender] = _to;
-    }
 
     event RewardsAdded(uint256 amount, uint256 timestamp);
 
@@ -97,7 +89,20 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
      * @notice allows users to claim pending `rewardToken`
      */
     function claimRewards(address _user) external virtual whenNotPaused nonReentrant returns (uint256) {
-        return _claimRewards(_user);
+        return _claimRewards(_user, _user);
+    }
+
+    /**
+     * @notice allows users to claim pending `rewardToken` paid to a different address
+     */
+    function claimRewards(address _user, address _receiver)
+        external
+        virtual
+        whenNotPaused
+        nonReentrant
+        returns (uint256)
+    {
+        return _claimRewards(_user, _receiver);
     }
 
     /****************************public view *************************************/
@@ -117,7 +122,7 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
     }
 
     /**
-     * @notice get the pendign rewards for a user
+     * @notice get the pending rewards for a user
      */
     function pendingRewards(address _user) public view returns (uint256 reward) {
         uint256 clc = rewardCountLastClaim[_user]; //count last claim
@@ -134,14 +139,8 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
      * @dev must be called before a users deposit changes, and before a user claims rewards
      */
     function _updateRewards(address _user) internal {
-        if (rewardCount == 0) return; // nothing to do.
-        uint256 clc = rewardCountLastClaim[_user]; //count last claim
-        uint256 cc = rewardCount - 1; //current count
-        if (cc == clc) {
-            return; //user already claimed rewards for this token
-        }
-        rewardOwed[_user] += userBalance(_user).mulDiv((cumulativeRewardShare[cc] - cumulativeRewardShare[clc]), 1e18);
-        rewardCountLastClaim[_user] = cc;
+        rewardOwed[_user] += pendingRewards(_user);
+        rewardCountLastClaim[_user] = rewardCount - 1;
     }
 
     error RewardDistributor__NothingOwed();
@@ -151,19 +150,15 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
     /**
      * @notice helper function to send users rewards to proper payout address
      */
-    function _claimRewards(address _user) internal returns (uint256) {
+    function _claimRewards(address _user, address _receiver) internal returns (uint256 owed) {
         if (_user == address(0)) revert RewardDistributor__ZeroAddress();
         _updateRewards(_user);
-        address to = payoutTo[_user] != address(0) ? payoutTo[_user] : _user;
 
-        uint256 owed = rewardOwed[_user];
-        if (owed > 0) {
-            rewardOwed[_user] = 0;
-            rewardToken.safeTransfer(to, owed);
-            return owed;
-        } else {
-            revert RewardDistributor__NothingOwed();
-        }
+        owed = rewardOwed[_user];
+        if (owed == 0) revert RewardDistributor__NothingOwed();
+
+        rewardOwed[_user] = 0;
+        rewardToken.safeTransfer(_receiver, owed);
     }
 
     error RewardDistributor__TransfersNotAllowed();
@@ -174,9 +169,8 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
     function _beforeTokenTransfer(
         address from,
         address to,
-        uint256 amount
+        uint256
     ) internal virtual override {
-        super._beforeTokenTransfer(from, to, amount);
         if (from != address(0) && to != address(0)) revert RewardDistributor__TransfersNotAllowed();
     }
 }
