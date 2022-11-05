@@ -2,7 +2,6 @@
 pragma solidity ^0.8.13;
 
 import { Olympus } from "src/Olympus.sol";
-import { OlympusAggregator } from "src/OlympusAggregator.sol";
 import { MerakiToken } from "src/MerakiToken.sol";
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { MintableERC20, ERC20 } from "src/MintableERC20.sol";
@@ -50,10 +49,6 @@ contract OlympusScript is Script, Chainlist {
         }
 
         Olympus olympus = new Olympus(merakiToken, WETH, founders, balances, 0.01e18);
-
-        uint256 minimumForUpkeep = 1e18;
-        OlympusAggregator aggregator = new OlympusAggregator(olympus, minimumForUpkeep);
-
         vm.stopBroadcast();
     }
 }
