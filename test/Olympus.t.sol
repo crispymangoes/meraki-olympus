@@ -155,28 +155,6 @@ contract OlympusTest is Test, ERC721Holder {
         olympus.unstake(1);
     }
 
-    function testSetPayoutAddress(uint8 amount) external {
-        amount = uint8(bound(amount, 1, 100));
-        uint256[] memory ids = new uint256[](amount);
-        for (uint256 i = 0; i < amount; i++) {
-            ids[i] = startIndex + i;
-        }
-        // Give this address some WETH to deposit as rewards.
-        uint256 rewardAmount = 1e18;
-        deal(address(WETH), address(this), 2 * rewardAmount);
-
-        olympus.stake(ids);
-
-        olympus.depositReward(rewardAmount);
-
-        // User changes payout address.
-        address newPayout = vm.addr(777);
-        olympus.setPayoutTo(newPayout);
-
-        uint256 reward = olympus.claimRewards(address(this));
-        assertEq(WETH.balanceOf(newPayout), reward, "Rewards should have been sent to new address.");
-    }
-
     function testDepositReward(uint256 rewardAmount) external {
         // Give this address some WETH to deposit as rewards.
         rewardAmount = bound(rewardAmount, 1e6, type(uint112).max);
@@ -197,7 +175,7 @@ contract OlympusTest is Test, ERC721Holder {
 
     function testPause() external {
         // Pause the contract.
-        olympus.Pause();
+        olympus.pause();
         assertTrue(olympus.paused(), "Contract should be paused.");
 
         uint256[] memory ids;
@@ -424,7 +402,7 @@ contract OlympusTest is Test, ERC721Holder {
         olympus.claimRewards(address(this));
         uint256 gasUsed = startingGas - gasleft();
 
-        assertEq(gasUsed, 55_175, "Gas used should be an O(1) operation and use constant gas.");
+        assertEq(gasUsed, 52_903, "Gas used should be an O(1) operation and use constant gas.");
     }
 
     function _claim(address claimer) internal returns (uint256 claimed) {
@@ -442,7 +420,6 @@ contract OlympusTest is Test, ERC721Holder {
         // Setup Meraki Balances.
         address alice = vm.addr(7777);
         address bob = vm.addr(77777);
-        address bobAlt = vm.addr(111111);
         address sally = vm.addr(777777);
 
         // Values to store total amount claimed per user.
@@ -484,7 +461,6 @@ contract OlympusTest is Test, ERC721Holder {
         vm.startPrank(bob);
         meraki.setApprovalForAll(address(olympus), true);
         olympus.stake(idsBob);
-        olympus.setPayoutTo(bobAlt);
         vm.stopPrank();
 
         vm.startPrank(sally);
@@ -567,8 +543,7 @@ contract OlympusTest is Test, ERC721Holder {
         userClaims[2] += olympus.claimRewards(sally);
 
         assertEq(WETH.balanceOf(alice), userClaims[0], "Alice WETH balance should equal total claimed.");
-        assertEq(WETH.balanceOf(bob), 0, "Bob WETH balance should be zero.");
-        assertEq(WETH.balanceOf(bobAlt), userClaims[1], "BobAlt WETH balance should equal total claimed.");
+        assertEq(WETH.balanceOf(bob), userClaims[1], "Bob WETH balance should equal total claimed.");
         assertEq(WETH.balanceOf(sally), userClaims[2], "Sally WETH balance should equal total claimed.");
         assertTrue(WETH.balanceOf(address(olympus)) < 1e6, "Olympus should have only have dust WETH left.");
     }
