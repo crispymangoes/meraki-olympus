@@ -57,7 +57,7 @@ contract MerakiToken is ERC721, Ownable {
     /**
      * @notice all tokens share the same meta data so tokenId is not used
      */
-    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+    function tokenURI(uint256) public view override returns (string memory) {
         return uri;
     }
 

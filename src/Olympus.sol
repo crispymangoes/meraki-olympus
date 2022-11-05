@@ -127,7 +127,7 @@ contract Olympus is RewardDistributor, ERC721Holder {
 
         //send user their NFTs
         uint256 idToTransfer;
-        for (uint256 i = 1; i <= _amount; i++) {
+        for (uint256 i; i < _amount; i++) {
             idToTransfer = userNFTIds[msg.sender].at(0);
             userNFTIds[msg.sender].remove(idToTransfer);
             MerakiToken.safeTransferFrom(address(this), msg.sender, idToTransfer);
@@ -147,7 +147,8 @@ contract Olympus is RewardDistributor, ERC721Holder {
      * @notice get an array of token ids a user has in Olympus
      */
     function usersNFTs(address _user) public view returns (uint256[] memory ids) {
-        ids = new uint256[](userNFTIds[_user].length());
+        uint256 numOfNFTs = userNFTIds[_user].length();
+        ids = new uint256[](numOfNFTs);
         for (uint256 i = 0; i < userNFTIds[_user].length(); i++) {
             ids[i] = userNFTIds[_user].at(i);
         }
