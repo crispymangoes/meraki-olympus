@@ -48,7 +48,7 @@ contract OlympusScript is Script, Chainlist {
             balances[0] = 90_000;
         }
 
-        Olympus olympus = new Olympus(merakiToken, WETH, founders, balances, 0.01e18);
+        new Olympus(merakiToken, WETH, founders, balances, 0.01e18);
         vm.stopBroadcast();
     }
 }

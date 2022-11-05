@@ -107,7 +107,7 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
     }
 
     /**
-     * @notice get the pendign rewards for a user
+     * @notice get the pending rewards for a user
      */
     function pendingRewards(address _user) public view returns (uint256 reward) {
         reward = rewardOwed[_user];
