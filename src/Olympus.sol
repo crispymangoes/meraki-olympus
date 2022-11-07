@@ -78,14 +78,14 @@ contract Olympus is RewardDistributor, ERC721Holder {
         if (_founders.length != _balances.length) revert Olympus__MisMatchedLengths();
 
         // Reset old founders balances to zero.
-        for (uint256 i = 0; i < founderList.length; i++) {
+        for (uint256 i; i < founderList.length; i++) {
             _updateRewards(founderList[i]);
             founderBalance[founderList[i]] = 0;
         }
 
         // Set new founder balances and record new total.
         uint256 total;
-        for (uint256 i = 0; i < _founders.length; i++) {
+        for (uint256 i; i < _founders.length; i++) {
             if (_founders[i] == address(0)) revert Olympus__ZeroAddressFounder();
             founderBalance[_founders[i]] = _balances[i];
             total += _balances[i];
@@ -119,7 +119,7 @@ contract Olympus is RewardDistributor, ERC721Holder {
         if (_ids.length == 0) revert Olympus__ZeroInput();
         //update reward info
         _updateRewards(msg.sender);
-        for (uint256 i = 0; i < _ids.length; i++) {
+        for (uint256 i; i < _ids.length; i++) {
             MerakiToken.safeTransferFrom(msg.sender, address(this), _ids[i], "");
             userNFTIds[msg.sender].add(_ids[i]);
         }
@@ -165,7 +165,7 @@ contract Olympus is RewardDistributor, ERC721Holder {
     function usersNFTs(address _user) public view returns (uint256[] memory ids) {
         uint256 numOfNFTs = userNFTIds[_user].length();
         ids = new uint256[](numOfNFTs);
-        for (uint256 i = 0; i < numOfNFTs; i++) {
+        for (uint256 i; i < numOfNFTs; i++) {
             ids[i] = userNFTIds[_user].at(i);
         }
         return ids;

@@ -190,7 +190,7 @@ contract OlympusTest is Test, ERC721Holder {
         olympus.claimRewards(address(0));
 
         // Make sure we can unpause.
-        olympus.unPause();
+        olympus.unpause();
         assertTrue(!olympus.paused(), "Contract should not be paused.");
     }
 
@@ -395,7 +395,7 @@ contract OlympusTest is Test, ERC721Holder {
         olympus.claimRewards(address(this));
         uint256 gasUsed = startingGas - gasleft();
 
-        assertEq(gasUsed, 52_920, "Gas used should be an O(1) operation and use constant gas.");
+        assertEq(gasUsed, 52_942, "Gas used should be an O(1) operation and use constant gas.");
     }
 
     function _claim(address claimer) internal returns (uint256 claimed) {

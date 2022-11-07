@@ -54,7 +54,7 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
         _pause();
     }
 
-    function unPause() external onlyOwner {
+    function unpause() external onlyOwner {
         _unpause();
     }
 
