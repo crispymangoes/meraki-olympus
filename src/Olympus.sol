@@ -7,8 +7,6 @@ import { ERC721Holder } from "@openzeppelin/contracts/token/ERC721/utils/ERC721H
 import { RewardDistributor, ERC20 } from "./RewardDistributor.sol";
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-import { console } from "@forge-std/Test.sol";
-
 contract Olympus is RewardDistributor, ERC721Holder {
     using EnumerableSet for EnumerableSet.UintSet;
 
@@ -28,9 +26,8 @@ contract Olympus is RewardDistributor, ERC721Holder {
         ERC721 _merakiToken,
         ERC20 _rewardToken,
         address[] memory _founders,
-        uint256[] memory _balances,
-        uint256 _minRewardDeposit
-    ) RewardDistributor("Staked Meraki Token", "sMRKI", _rewardToken, _minRewardDeposit) {
+        uint256[] memory _balances
+    ) RewardDistributor("Staked Meraki Token", "sMRKI", _rewardToken) {
         MerakiToken = _merakiToken;
 
         if (_founders.length != _balances.length) revert Olympus__MisMatchedLengths();

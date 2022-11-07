@@ -29,7 +29,6 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
     //reward tracking
     uint256 public totalDeposits; //total amount of deposits in pool
     uint256 public totalRewards; //total amount of rewards in pool
-    uint256 public minRewardDeposit;
     uint256 public cumulativeRewardShare; //store cumulative reward share as rewards are added
 
     //user information
@@ -45,11 +44,9 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
     constructor(
         string memory _name,
         string memory _symbol,
-        ERC20 _rewardToken,
-        uint256 _minRewardDeposit
+        ERC20 _rewardToken
     ) ERC20(_name, _symbol) Ownable() {
         rewardToken = _rewardToken;
-        minRewardDeposit = _minRewardDeposit;
     }
 
     /****************************external onlyOwner *************************************/
@@ -61,27 +58,7 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
         _unpause();
     }
 
-    function setMinimumRewardDeposit(uint256 _min) external onlyOwner {
-        minRewardDeposit = _min;
-    }
-
     /****************************external mutative *************************************/
-
-    event RewardsAdded(uint256 amount, uint256 timestamp);
-
-    error RewardDistributor__MinimumRewardDepositNotMet();
-
-    /**
-     * @notice how rewards are added to this contract
-     * @param _amount the amount of `rewardToken` to add
-     */
-    function depositReward(uint256 _amount) public whenNotPaused nonReentrant {
-        if (_amount < minRewardDeposit) revert RewardDistributor__MinimumRewardDepositNotMet();
-        rewardToken.safeTransferFrom(msg.sender, address(this), _amount);
-
-        _depositReward(_amount);
-    }
-
     /**
      * @notice allows users to claim pending `rewardToken`
      */
@@ -118,12 +95,14 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
         lastCumulativeRewardShare[_user] = cumulativeRewardShare;
     }
 
+    event RewardsAdded(uint256 amount, uint256 timestamp);
+
     error RewardDistributor__NothingOwed();
 
     error RewardDistributor__ZeroAddress();
 
     /**
-     * @notice Deposits unaccounted reward token balance, incrementing totalRewards, and the cumulative reward share.
+     * @notice Deposits unaccounted reward token balance, incrementing totalRewards, and the cumulative reward.
      */
     function _depositReward(uint256 _amount) internal {
         totalRewards += _amount;

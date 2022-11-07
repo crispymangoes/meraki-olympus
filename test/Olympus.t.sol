@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
+import { MockOlympus } from "src/mocks/MockOlympus.sol";
 import { Olympus, RewardDistributor } from "src/Olympus.sol";
 import { MerakiToken } from "src/MerakiToken.sol";
 import { ERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
@@ -11,7 +12,7 @@ import { ReentrancyAttacker } from "src/mocks/ReentrancyAttacker.sol";
 import { Test, stdStorage, console, StdStorage, stdError } from "@forge-std/Test.sol";
 
 contract OlympusTest is Test, ERC721Holder {
-    Olympus private olympus;
+    MockOlympus private olympus;
 
     address[] private founders = new address[](5);
     uint256[] private founderBalances = new uint256[](5);
@@ -40,7 +41,7 @@ contract OlympusTest is Test, ERC721Holder {
         founderBalances[3] = 25_000;
         founderBalances[4] = 10_000;
 
-        olympus = new Olympus(meraki, WETH, founders, founderBalances, 1);
+        olympus = new MockOlympus(meraki, WETH, founders, founderBalances, 1);
 
         // Give this address some Meraki tokens to work with.
         vm.startPrank(merakiTokenWhale);
@@ -383,16 +384,8 @@ contract OlympusTest is Test, ERC721Holder {
         // User joins.
         olympus.stake(ids);
 
-        olympus.setMinimumRewardDeposit(0.01e18);
-
         // Minimum reward amount is currently 0.01 Reward Token.
         uint256 rewardAmount = 0.01e18;
-
-        // Attacker first tries to attack depositing 0 wei rewards.
-        vm.expectRevert(
-            abi.encodeWithSelector(RewardDistributor.RewardDistributor__MinimumRewardDepositNotMet.selector)
-        );
-        olympus.depositReward(0);
 
         // Attacker spams Olympus with minimum reward deposits to try and stop users from claiming rewards.
         for (uint256 i = 0; i < 1_000; i++) {
