@@ -86,20 +86,7 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
      * @notice allows users to claim pending `rewardToken`
      */
     function claimRewards(address _user) external virtual whenNotPaused nonReentrant returns (uint256) {
-        return _claimRewards(_user, _user);
-    }
-
-    /**
-     * @notice allows users to claim pending `rewardToken` paid to a different address
-     */
-    function claimRewards(address _user, address _receiver)
-        external
-        virtual
-        whenNotPaused
-        nonReentrant
-        returns (uint256)
-    {
-        return _claimRewards(_user, _receiver);
+        return _claimRewards(_user);
     }
 
     /****************************public view *************************************/
@@ -135,6 +122,9 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
 
     error RewardDistributor__ZeroAddress();
 
+    /**
+     * @notice Deposits unaccounted reward token balance, incrementing totalRewards, and the cumulative reward share.
+     */
     function _depositReward(uint256 _amount) internal {
         totalRewards += _amount;
         cumulativeRewardShare += _amount.mulDiv(1e18, totalDeposits);
@@ -145,7 +135,7 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
     /**
      * @notice helper function to send users rewards to proper payout address
      */
-    function _claimRewards(address _user, address _receiver) internal returns (uint256 owed) {
+    function _claimRewards(address _user) internal returns (uint256 owed) {
         if (_user == address(0)) revert RewardDistributor__ZeroAddress();
         _updateRewards(_user);
 
@@ -153,7 +143,7 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
         if (owed == 0) revert RewardDistributor__NothingOwed();
         totalRewards -= owed;
         rewardOwed[_user] = 0;
-        rewardToken.safeTransfer(_receiver, owed);
+        rewardToken.safeTransfer(_user, owed);
     }
 
     error RewardDistributor__TransfersNotAllowed();

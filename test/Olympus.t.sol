@@ -402,7 +402,7 @@ contract OlympusTest is Test, ERC721Holder {
         olympus.claimRewards(address(this));
         uint256 gasUsed = startingGas - gasleft();
 
-        assertEq(gasUsed, 52_903, "Gas used should be an O(1) operation and use constant gas.");
+        assertEq(gasUsed, 52_920, "Gas used should be an O(1) operation and use constant gas.");
     }
 
     function _claim(address claimer) internal returns (uint256 claimed) {
