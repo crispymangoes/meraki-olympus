@@ -12,7 +12,7 @@ import { ReentrancyGuard } from "@openzeppelin/contracts/security/ReentrancyGuar
 /**
  * @title Adds advanced reward distribution logic to a staking contract
  * @author crispymangoes
- * @notice on every reward deposit the summation of rewardDeposit/totalBalance is saved and used to calculate
+ * @notice on every user action the summation of rewardDeposit/totalBalance is saved and used to calculate
  * a users reward share
  * @dev _updateReward must be called before a users userBalance changes, and  before _claimRewards is called
  * @dev Need to implement a deposit function that calls _mint
@@ -74,10 +74,14 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
     function userBalance(address _user) public view virtual returns (uint256);
 
     /**
-     * @notice get the pending rewards for a user
+     * @notice Get the pending rewards for a user.
+     * @dev Does not account for unaccount rewards sitting in the contract,
+     *      so when users actually claim, they can receive MORE rewards than this view function says.
      */
     function pendingRewards(address _user) public view returns (uint256 reward) {
+        // Account for existing reward balance.
         reward = rewardOwed[_user];
+        // Account for pending rewards.
         reward += userBalance(_user).mulDiv((cumulativeRewardShare - lastCumulativeRewardShare[_user]), 1e18);
     }
 
@@ -86,7 +90,7 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
      * @dev must be called before a users deposit changes, and before a user claims rewards
      */
     function _updateRewards(address _user) internal {
-        // deposit any rewards transferred to this contract that were not added
+        // Deposit any rewards transferred to this contract that were not added
         // via depositReward (eg. sale fees, airdrops, stray transfers, etc)
         uint256 undepositedRewards = rewardToken.balanceOf(address(this)) - totalRewards;
         if (undepositedRewards > 0) _depositReward(undepositedRewards);
@@ -95,10 +99,21 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
         lastCumulativeRewardShare[_user] = cumulativeRewardShare;
     }
 
+    /**
+     * @notice Emitted when rewards are accounted for.
+     * @param amount the amount of rewards added.
+     * @param timestamp the rewards were added.
+     */
     event RewardsAdded(uint256 amount, uint256 timestamp);
 
+    /**
+     * @notice Attempted to claim rewards when nothing was owed.
+     */
     error RewardDistributor__NothingOwed();
 
+    /**
+     * @notice Attempted to claim rewards for zero address.
+     */
     error RewardDistributor__ZeroAddress();
 
     /**
@@ -112,7 +127,7 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
     }
 
     /**
-     * @notice helper function to send users rewards to proper payout address
+     * @notice Claims a users rewards and sends it to their address.
      */
     function _claimRewards(address _user) internal returns (uint256 owed) {
         if (_user == address(0)) revert RewardDistributor__ZeroAddress();
@@ -125,10 +140,13 @@ abstract contract RewardDistributor is Ownable, ERC20, Pausable, ReentrancyGuard
         rewardToken.safeTransfer(_user, owed);
     }
 
+    /**
+     * @notice Attempted to transfer ERC20 receipt tokens.
+     */
     error RewardDistributor__TransfersNotAllowed();
 
     /**
-     * @dev token transfers are not allowed because reward logic does NOT account for transfers
+     * @dev Token transfers are not allowed because reward logic does NOT account for transfers
      */
     function _beforeTokenTransfer(
         address from,

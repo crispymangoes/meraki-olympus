@@ -7,6 +7,10 @@ import { ERC721Holder } from "@openzeppelin/contracts/token/ERC721/utils/ERC721H
 import { RewardDistributor, ERC20 } from "./RewardDistributor.sol";
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
+/**
+ * @title Meraki Reward Distribution contract, aka Olympus.
+ * @author crispymangoes
+ */
 contract Olympus is RewardDistributor, ERC721Holder {
     using EnumerableSet for EnumerableSet.UintSet;
 
@@ -42,11 +46,19 @@ contract Olympus is RewardDistributor, ERC721Holder {
     }
 
     /****************************external onlyOwner *************************************/
-
+    /**
+     * @notice Attempted to alter total founder balance to illogical value.
+     */
     error Olympus__WrongFounderBalanceTotal(uint256 actual, uint256 expected);
 
+    /**
+     * @notice Attempted to set the zero address to be a founder.
+     */
     error Olympus__ZeroAddressFounder();
 
+    /**
+     * @notice Attempted to alter founder balances with a mismatched founder and balance arrays.
+     */
     error Olympus__MisMatchedLengths();
 
     /**
@@ -71,6 +83,7 @@ contract Olympus is RewardDistributor, ERC721Holder {
             founderBalance[founderList[i]] = 0;
         }
 
+        // Set new founder balances and record new total.
         uint256 total;
         for (uint256 i = 0; i < _founders.length; i++) {
             if (_founders[i] == address(0)) revert Olympus__ZeroAddressFounder();
@@ -78,8 +91,10 @@ contract Olympus is RewardDistributor, ERC721Holder {
             total += _balances[i];
         }
 
+        // Revert if new total is greater than the previous cap.
         if (total > founderDepositCap) revert Olympus__WrongFounderBalanceTotal(total, founderDepositCap);
 
+        // Revert is new total is less than the previous cap, and `_lowerCap` is false.
         if (total < founderDepositCap) {
             if (!_lowerCap) revert Olympus__WrongFounderBalanceTotal(total, founderDepositCap);
             totalDeposits = totalDeposits - founderDepositCap + total;
@@ -91,7 +106,9 @@ contract Olympus is RewardDistributor, ERC721Holder {
     }
 
     /****************************external mutative *************************************/
-
+    /**
+     * @notice Attempeted to stake/unstake with a zero value.
+     */
     error Olympus__ZeroInput();
 
     /**
@@ -133,11 +150,13 @@ contract Olympus is RewardDistributor, ERC721Holder {
 
     /****************************public view *************************************/
     /**
-     * @notice Get a users voting power
-     * @notice founders have reduced voting power
+     * @notice Get a users voting power.
+     * @notice Founders have reduced voting power.
+     * @dev Users always have a 1:1 NFT to vote.
+     * @dev Founders always have a 0.111:1 NFT to vote.
      */
     function DAOVotingPower(address _user) public view returns (uint256) {
-        return balanceOf(_user) + ((founderBalance[_user] * (MAX_SUPPLY - founderDepositCap)) / founderDepositCap); //account for founders reduced voting power
+        return balanceOf(_user) + (founderBalance[_user] / 9); // Account for founders reduced voting power.
     }
 
     /**
@@ -146,7 +165,7 @@ contract Olympus is RewardDistributor, ERC721Holder {
     function usersNFTs(address _user) public view returns (uint256[] memory ids) {
         uint256 numOfNFTs = userNFTIds[_user].length();
         ids = new uint256[](numOfNFTs);
-        for (uint256 i = 0; i < userNFTIds[_user].length(); i++) {
+        for (uint256 i = 0; i < numOfNFTs; i++) {
             ids[i] = userNFTIds[_user].at(i);
         }
         return ids;
